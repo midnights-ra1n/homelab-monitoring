@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, CircleCheck, Cpu, HardDrive, Laptop, LoaderCircle, Server } from "lucide-react";
 import { api, fmtBytes, fmtPct, type Host, type Install } from "../api";
-import { Alert, Button, CodeBlock, Dialog, Field, Segmented, Switch, navigate } from "../ui";
+import { Alert, Button, CodeBlock, Dialog, Field, Segmented, Switch, navigate, useToast } from "../ui";
 
 type Kind = "vm" | "proxmox" | "physical" | "client";
 const KINDS: { id: Kind; label: string; hint: string; icon: typeof Server; smart: boolean }[] = [
@@ -14,6 +14,30 @@ const KINDS: { id: Kind; label: string; hint: string; icon: typeof Server; smart
 export interface InstallOptions { smart: boolean; autoUpdate: boolean }
 
 const REPO = "midnights-ra1n/homelab-monitoring";
+
+export const UNINSTALL_COMMAND = `curl -fsSL https://raw.githubusercontent.com/${REPO}/stable/rust-agent/uninstall.sh | sudo sh`;
+
+const validHubUrl = (u: string) => /^https?:\/\/[^\s'"`$\\]+$/.test(u);
+
+/** Hub address as seen by the machines; editable, remembered for the next installs. */
+export function HubUrlField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const toast = useToast();
+  const [saved, setSaved] = useState(value);
+  const [serverError, setServerError] = useState<string>();
+  const save = () => {
+    const v = value.trim().replace(/\/$/, "");
+    if (v === saved || !validHubUrl(v)) return;
+    api.put("/api/settings", { agent_hub_url: v }).then(
+      () => { setSaved(v); setServerError(undefined); toast("Adresse du hub mémorisée pour les prochains hôtes"); },
+      (e) => setServerError((e as Error).message));
+  };
+  return (
+    <Field label="Adresse du hub" htmlFor="hub-url" error={validHubUrl(value) ? serverError : "L'adresse doit commencer par http:// ou https://"}
+      hint="Adresse que la machine utilise pour joindre ce serveur (IP du LAN, nom de domaine…). Mémorisée pour les prochains hôtes.">
+      <input id="hub-url" className="input mono" value={value} onChange={(e) => { setServerError(undefined); onChange(e.target.value); }} onBlur={save} spellCheck={false} />
+    </Field>
+  );
+}
 
 /** One-liner for install.sh; options are passed as environment variables. */
 export function installCommand(i: Install, o: InstallOptions) {
@@ -41,10 +65,13 @@ function envFile(i: Install, o: InstallOptions) {
 }
 
 /** Install instructions with one tab per method; also used after a token rotation. */
-export function InstallInstructions({ install, name, options = { smart: true, autoUpdate: true } }: { install: Install; name: string; options?: InstallOptions }) {
+export function InstallInstructions({ install: initial, name, options = { smart: true, autoUpdate: true } }: { install: Install; name: string; options?: InstallOptions }) {
   const [method, setMethod] = useState<"curl" | "ansible" | "manual">("curl");
+  const [hub, setHub] = useState(initial.hub_url);
+  const install = { ...initial, hub_url: hub.trim().replace(/\/$/, "") };
   return (
     <div className="form">
+      <HubUrlField value={hub} onChange={setHub} />
       <Alert tone="warning" title="Le jeton ne sera plus affiché">Copiez-le maintenant. Il peut être régénéré depuis la fiche de l'hôte.</Alert>
       {install.hub_url.startsWith("http://") && (
         <Alert tone="info" title="Liaison non chiffrée">Le hub est joint en HTTP : la commande ajoute ALLOW_INSECURE=true. Un reverse proxy HTTPS chiffrerait les échanges.</Alert>
@@ -58,7 +85,7 @@ export function InstallInstructions({ install, name, options = { smart: true, au
       )}
       {method === "ansible" && (
         <>
-          <p className="small muted">Avec le rôle <span className="mono">deploy/ansible/roles/hlm_agent</span>, ajoutez ces variables pour cet hôte puis lancez le playbook. Pour tout un parc, un seul jeton API <span className="mono">hosts:write</span> suffit : chaque machine s'enregistre seule (voir docs/AGENT.md).</p>
+          <p className="small muted">Avec le rôle <span className="mono">deploy/ansible/roles/hlm_agent</span>, ajoutez ces variables pour cet hôte puis lancez le playbook. Pour tout un parc, utilisez plutôt un jeton commun : bouton « Déploiement en masse » de la page Hôtes.</p>
           <CodeBlock text={ansibleVars(name, install, options)} />
           <CodeBlock text="ansible-playbook -i inventory.ini deploy/ansible/site.yml --ask-vault-pass --limit NOM_DE_L_HOTE" />
         </>
@@ -70,6 +97,10 @@ export function InstallInstructions({ install, name, options = { smart: true, au
           <p className="small muted">et installez l'unité <span className="mono">rust-agent/hlm-agent.service</span> du dépôt dans <span className="mono">/etc/systemd/system/</span> : <span className="mono">systemctl enable --now hlm-agent</span>.</p>
         </>
       )}
+      <details className="small">
+        <summary className="muted" style={{ cursor: "pointer" }}>Désinstaller l'agent plus tard</summary>
+        <div style={{ marginTop: 8 }}><CodeBlock text={UNINSTALL_COMMAND} /></div>
+      </details>
     </div>
   );
 }

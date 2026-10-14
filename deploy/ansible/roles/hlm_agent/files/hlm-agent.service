@@ -20,6 +20,9 @@ NoNewPrivileges=yes
 CapabilityBoundingSet=
 ProtectSystem=strict
 ReadWritePaths=/opt/hlm-agent
+# Personal token of an agent enrolled with a shared token.
+StateDirectory=hlm-agent/state
+StateDirectoryMode=0700
 ProtectHome=read-only
 PrivateTmp=yes
 PrivateDevices=yes

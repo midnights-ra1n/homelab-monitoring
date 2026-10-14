@@ -40,6 +40,7 @@ var settingDefs = map[string]string{
 	"status_layout":          "",
 	"api_enabled":            "false",
 	"api_cors_origins":       "",
+	"agent_hub_url":          "",
 	"report_monthly_enabled": "false",
 }
 
@@ -108,6 +109,12 @@ func validateSettings(in map[string]string) string {
 		}
 		if msg := validateStatusLayout(blocks); msg != "" {
 			return msg
+		}
+	}
+	if v := strings.TrimSpace(in["agent_hub_url"]); v != "" {
+		u, err := url.Parse(v)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || strings.ContainsAny(v, "'\" \\`$") {
+			return "L'adresse du hub doit ressembler à https://monitoring.example.fr"
 		}
 	}
 	for _, o := range strings.Split(in["api_cors_origins"], ",") {

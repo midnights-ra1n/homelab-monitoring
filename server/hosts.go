@@ -224,8 +224,17 @@ func validName(n string) (string, string) {
 	return n, ""
 }
 
+// agentHubURL is the address agents use: the setting chosen in the UI, else HLM_PUBLIC_URL,
+// else the address the browser used.
+func (s *Server) agentHubURL(r *http.Request) string {
+	if u := strings.TrimRight(strings.TrimSpace(s.getSetting("agent_hub_url", "")), "/"); u != "" {
+		return u
+	}
+	return s.baseURL(r)
+}
+
 func (s *Server) installInfo(r *http.Request, token string) map[string]string {
-	hub := s.baseURL(r)
+	hub := s.agentHubURL(r)
 	key := base64.StdEncoding.EncodeToString(s.pub)
 	insecure := ""
 	if strings.HasPrefix(hub, "http://") {
@@ -394,7 +403,7 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 	}
 	th := hashToken(tok)
 	var id int64
-	var hostName string
+	var hostName, issued string
 	if err := s.db.QueryRow(`SELECT id, name FROM hosts WHERE token_hash=?`, th).Scan(&id, &hostName); err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			serverErr(w, err)
@@ -404,9 +413,20 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusTooManyRequests, "Trop de tentatives")
 			return
 		}
-		slog.Warn("agent rejected: unknown token", "ip", ip)
-		writeErr(w, http.StatusUnauthorized, "Jeton agent inconnu")
-		return
+		var ok bool
+		if strings.HasPrefix(tok, enrollPrefix) {
+			id, hostName, issued, ok, err = s.enrollHost(tok, r.Header.Get("X-Agent-Hostname"))
+			if err != nil {
+				serverErr(w, err)
+				return
+			}
+		}
+		if !ok {
+			slog.Warn("agent rejected: unknown token", "ip", ip)
+			writeErr(w, http.StatusUnauthorized, "Jeton agent inconnu")
+			return
+		}
+		slog.Info("agent enrolled", "host_id", id, "name", hostName, "ip", ip)
 	}
 	// The HTTP server's read timeout must not apply to this long-lived connection.
 	http.NewResponseController(w).SetReadDeadline(time.Time{})
@@ -437,6 +457,9 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 	msg := append([]byte(agentAuthContext), nonce...)
 	msg = append(msg, th...)
 	hello := map[string]any{"type": "hello", "sig": base64.StdEncoding.EncodeToString(ed25519.Sign(s.priv, msg)), "interval": interval}
+	if issued != "" {
+		hello["token"] = issued // personal token for an enrolled agent, to use instead of the shared one
+	}
 	if err := wsjson.Write(ctx, c, hello); err != nil {
 		return
 	}

@@ -1,5 +1,7 @@
 ---
+# Copy to main.yml. Values shown in Hôtes → Déploiement en masse.
 hlm_hub_url: https://monitoring.example.fr
-# Defined in vault.yml (ansible-vault create group_vars/monitored/vault.yml):
-#   vault_hlm_api_token: hlm_xxxxxxxx   # API token with the hosts:write scope
-hlm_api_token: "{{ vault_hlm_api_token }}"
+hlm_key: "clé publique du hub"
+# Shared enrollment token, kept in vault.yml (ansible-vault create group_vars/monitored/vault.yml):
+#   vault_hlm_agent_token: enr_xxxxxxxx
+hlm_agent_token: "{{ vault_hlm_agent_token }}"

@@ -1,0 +1,32 @@
+---
+- name: Stop and disable the services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: [hlm-agent.service, hlm-agent-smart.timer]
+  failed_when: false
+
+- name: Remove files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/hlm-agent.service
+    - /etc/systemd/system/hlm-agent-smart.service
+    - /etc/systemd/system/hlm-agent-smart.timer
+    - /opt/hlm-agent
+    - /etc/hlm-agent
+    - /usr/local/lib/hlm-agent
+    - /var/lib/hlm-agent
+  register: _hlm_removed
+
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: _hlm_removed is changed
+
+- name: Remove the hlm-agent user
+  ansible.builtin.user:
+    name: hlm-agent
+    state: absent

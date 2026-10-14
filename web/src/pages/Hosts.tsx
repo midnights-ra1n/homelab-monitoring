@@ -1,18 +1,23 @@
 import { useMemo, useState } from "react";
-import { ChevronRight, KeyRound, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, KeyRound, Plus, Trash2, Users } from "lucide-react";
 import { api, fmtAgo, fmtBytes, fmtDate, fmtPct, pct, type Host, type HostSeries, type Install } from "../api";
-import { Alert, Button, Card, Chart, Dialog, Link, Progress, Segmented, StatusBadge, Switch, navigate, usePoll, useToast } from "../ui";
+import { Alert, Button, Card, Chart, CodeBlock, Dialog, Link, Progress, Segmented, StatusBadge, Switch, navigate, usePoll, useToast } from "../ui";
 import { DiskCard, type HostDisks } from "./Disks";
-import { AddHostWizard, InstallInstructions } from "./AddHostWizard";
+import { AddHostWizard, InstallInstructions, UNINSTALL_COMMAND } from "./AddHostWizard";
+import { MassDeployDialog } from "./MassDeploy";
 
 export function HostsPage() {
   const { data, error, refresh } = usePoll(() => api.get<Host[]>("/api/hosts"), 15000);
   const [adding, setAdding] = useState(false);
+  const [mass, setMass] = useState(false);
   return (
     <div className="page">
       <div className="page-header">
         <div><h1>Hôtes</h1><p className="muted">Machines virtuelles, serveurs Proxmox, serveurs physiques et postes équipés de l'agent.</p></div>
-        <div className="actions"><Button variant="primary" icon={<Plus />} onClick={() => setAdding(true)}>Ajouter un hôte</Button></div>
+        <div className="actions">
+          <Button icon={<Users />} onClick={() => setMass(true)}>Déploiement en masse</Button>
+          <Button variant="primary" icon={<Plus />} onClick={() => setAdding(true)}>Ajouter un hôte</Button>
+        </div>
       </div>
       {error && <Alert tone="danger" title="Impossible de charger les hôtes">{error}</Alert>}
       <Card flush>
@@ -44,6 +49,7 @@ export function HostsPage() {
         )}
       </Card>
       <AddHostWizard open={adding} onClose={() => { setAdding(false); refresh(); }} />
+      <MassDeployDialog open={mass} onClose={() => { setMass(false); refresh(); }} />
     </div>
   );
 }
@@ -179,7 +185,10 @@ export function HostDetailPage({ id }: { id: number }) {
         description="L'hôte et tout son historique de métriques seront supprimés définitivement."
         footer={<><Button onClick={() => setConfirmDelete(false)}>Annuler</Button>
           <Button variant="danger" onClick={() => api.del(`/api/hosts/${id}`).then(() => { toast("Hôte supprimé"); navigate("/hosts"); })}>Supprimer l'hôte</Button></>}>
-        <p className="small muted">L'agent installé sur la machine ne pourra plus se connecter.</p>
+        <div className="form">
+          <p className="small muted">L'agent ne pourra plus se connecter. Pour le retirer aussi de la machine :</p>
+          <CodeBlock text={UNINSTALL_COMMAND} />
+        </div>
       </Dialog>
     </div>
   );

@@ -74,6 +74,29 @@ struct Hello {
     kind: String,
     sig: String,
     interval: u64,
+    /// Personal token, sent once to an agent that enrolled with a shared enrollment token.
+    token: Option<String>,
+}
+
+/// Where an enrolled agent keeps its personal token: $STATE_DIRECTORY, set by systemd's
+/// StateDirectory= (/var/lib/hlm-agent/state, mode 0700).
+fn state_token_path() -> String {
+    std::env::var("STATE_DIRECTORY").unwrap_or_else(|_| "/var/lib/hlm-agent/state".into()) + "/token"
+}
+
+fn state_token() -> Option<String> {
+    std::fs::read_to_string(state_token_path()).ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+}
+
+fn save_state_token(tok: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let path = state_token_path();
+    let tmp = format!("{path}.tmp");
+    let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp)?;
+    f.write_all(tok.as_bytes())?;
+    f.sync_all()?;
+    std::fs::rename(tmp, path)
 }
 
 /// The hub signs AUTH_CONTEXT || nonce || sha256(token); see handleAgentWS in server/hosts.go.
@@ -90,9 +113,10 @@ fn hub_signature_ok(key: &VerifyingKey, nonce: &[u8; 32], token: &str, sig_b64: 
 enum Failure {
     Retry(String),
     Fatal(String),
+    Rejected,
 }
 
-async fn session(cfg: &Config, collector: &mut collect::Collector) -> Failure {
+async fn session(cfg: &Config, token: &str, collector: &mut collect::Collector) -> Failure {
     let mut nonce = [0u8; 32];
     if let Err(e) = getrandom::fill(&mut nonce) {
         return Failure::Fatal(format!("no randomness: {e}"));
@@ -102,7 +126,10 @@ async fn session(cfg: &Config, collector: &mut collect::Collector) -> Failure {
         Err(e) => return Failure::Fatal(format!("invalid HUB_URL: {e}")),
     };
     let h = req.headers_mut();
-    h.insert("Authorization", format!("Bearer {}", cfg.token).parse().unwrap());
+    h.insert("Authorization", format!("Bearer {token}").parse().unwrap());
+    if let Some(name) = sysinfo::System::host_name().and_then(|n| n.parse().ok()) {
+        h.insert("X-Agent-Hostname", name); // name used when enrolling with a shared token
+    }
     h.insert("X-Agent-Nonce", B64.encode(nonce).parse().unwrap());
     h.insert("User-Agent", format!("hlm-agent/{VERSION}").parse().unwrap());
 
@@ -111,7 +138,7 @@ async fn session(cfg: &Config, collector: &mut collect::Collector) -> Failure {
         Err(_) => return Failure::Retry("connection timed out".into()),
         Ok(Err(tungstenite::Error::Http(resp))) if resp.status() == 401 => {
             // A wrong token never fixes itself; slow retry is handled by the caller.
-            return Failure::Fatal("hub rejected TOKEN (401)".into());
+            return Failure::Rejected;
         }
         Ok(Err(e)) => return Failure::Retry(e.to_string()),
         Ok(Ok((ws, _))) => ws,
@@ -124,9 +151,15 @@ async fn session(cfg: &Config, collector: &mut collect::Collector) -> Failure {
         },
         _ => return Failure::Retry("no hello from hub".into()),
     };
-    if hello.kind != "hello" || !hub_signature_ok(&cfg.key, &nonce, &cfg.token, &hello.sig) {
+    if hello.kind != "hello" || !hub_signature_ok(&cfg.key, &nonce, token, &hello.sig) {
         let _ = ws.close(None).await;
         return Failure::Fatal("hub signature invalid: KEY does not match this hub".into());
+    }
+    if let Some(personal) = &hello.token {
+        match save_state_token(personal) {
+            Ok(()) => eprintln!("hlm-agent: enrolled, personal token saved to {}", state_token_path()),
+            Err(e) => eprintln!("hlm-agent: enrolled but cannot save {}: {e}", state_token_path()),
+        }
     }
     let interval = Duration::from_secs(hello.interval.clamp(5, 3600));
     eprintln!("hlm-agent: connected, reporting every {}s", interval.as_secs());
@@ -214,10 +247,20 @@ async fn main() {
     let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).expect("signal handler");
     loop {
         let started = std::time::Instant::now();
+        // An enrolled agent uses its personal token; TOKEN from the config is the fallback.
+        let personal = state_token();
+        let token = personal.clone().unwrap_or_else(|| cfg.token.clone());
         let wait = tokio::select! {
-            f = session(&cfg, &mut collector) => match f {
+            f = session(&cfg, &token, &mut collector) => match f {
                 Failure::Retry(e) => { eprintln!("hlm-agent: disconnected: {e}"); None }
                 Failure::Fatal(e) => { eprintln!("hlm-agent: {e}"); Some(300) }
+                Failure::Rejected if personal.is_some() => {
+                    // Host deleted or token rotated in the UI: enroll again with the shared token.
+                    eprintln!("hlm-agent: personal token rejected, falling back to TOKEN");
+                    let _ = std::fs::remove_file(state_token_path());
+                    Some(1)
+                }
+                Failure::Rejected => { eprintln!("hlm-agent: hub rejected TOKEN (401)"); Some(300) }
             },
             _ = term.recv() => return,
         };

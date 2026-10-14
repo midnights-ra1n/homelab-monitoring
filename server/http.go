@@ -57,6 +57,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/status/layout", auth(s.handleGetStatusLayout))
 	mux.HandleFunc("PUT /api/status/layout", auth(s.handlePutStatusLayout))
 	mux.HandleFunc("POST /api/status/preview", auth(s.handlePreviewStatus))
+	mux.HandleFunc("GET /api/enroll-tokens", auth(s.handleListEnrollTokens))
+	mux.HandleFunc("POST /api/enroll-tokens", auth(s.handleCreateEnrollToken))
+	mux.HandleFunc("DELETE /api/enroll-tokens/{id}", auth(s.handleDeleteEnrollToken))
 	s.apiRoutes(mux)
 
 	mux.Handle("/", s.staticHandler())

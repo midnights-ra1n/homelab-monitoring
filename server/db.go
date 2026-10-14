@@ -94,6 +94,15 @@ var migrations = []string{
 		cpu_sum REAL NOT NULL,
 		mem_sum REAL NOT NULL,
 		PRIMARY KEY(host_id, day)) WITHOUT ROWID;`,
+	`CREATE TABLE enroll_tokens(
+		id INTEGER PRIMARY KEY,
+		name TEXT NOT NULL,
+		token_hash BLOB UNIQUE NOT NULL,
+		prefix TEXT NOT NULL,
+		expires_at INTEGER,
+		created_at INTEGER NOT NULL,
+		last_used_at INTEGER NOT NULL DEFAULT 0,
+		uses INTEGER NOT NULL DEFAULT 0);`,
 }
 
 func openDB(dir string) (*sql.DB, error) {

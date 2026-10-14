@@ -1,0 +1,131 @@
+---
+- name: Check configuration
+  ansible.builtin.assert:
+    that:
+      - hlm_hub_url is match('^https?://')
+      - hlm_agent_token | length > 0
+      - hlm_key | length > 0
+      - ansible_facts.architecture in ['x86_64', 'amd64', 'aarch64', 'arm64']
+    fail_msg: "Set hlm_hub_url, hlm_agent_token and hlm_key (shown in Hôtes → Déploiement en masse). Supported: x86_64, aarch64."
+    quiet: true
+
+- name: Select the binary for this architecture
+  ansible.builtin.set_fact:
+    _hlm_arch: "{{ {'x86_64': 'x86_64', 'amd64': 'x86_64', 'aarch64': 'aarch64', 'arm64': 'aarch64'}[ansible_facts.architecture] }}"
+
+# Release metadata is read once, from the controller, for the whole play.
+- name: Resolve the latest release
+  ansible.builtin.uri:
+    url: "https://api.github.com/repos/{{ hlm_repo }}/releases/latest"
+    headers:
+      Accept: application/vnd.github+json
+  register: _hlm_release
+  when: hlm_version == 'latest'
+  run_once: true
+  delegate_to: localhost
+  become: false
+  check_mode: false
+
+- name: Fetch the published checksums
+  ansible.builtin.uri:
+    url: "https://github.com/{{ hlm_repo }}/releases/download/{{ _hlm_tag }}/hlm-agent-linux-{{ item }}.sha256"
+    return_content: true
+  register: _hlm_sums
+  loop: [x86_64, aarch64]
+  run_once: true
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  vars:
+    _hlm_tag: "{{ _hlm_release.json.tag_name if hlm_version == 'latest' else hlm_version }}"
+
+- name: Create the hlm-agent system user
+  ansible.builtin.user:
+    name: hlm-agent
+    system: true
+    create_home: false
+    home: /nonexistent
+    shell: /usr/sbin/nologin
+
+- name: Create directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: hlm-agent
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: /opt/hlm-agent, owner: hlm-agent, mode: "0755" }   # writable by the agent for self-update
+    - { path: /etc/hlm-agent, owner: root, mode: "0750" }
+    - { path: /var/lib/hlm-agent, owner: root, mode: "0750" }
+
+- name: Install the agent binary (verified by SHA-256)
+  ansible.builtin.get_url:
+    url: "https://github.com/{{ hlm_repo }}/releases/download/{{ _hlm_tag }}/hlm-agent-linux-{{ _hlm_arch }}"
+    dest: /opt/hlm-agent/hlm-agent
+    checksum: "sha256:{{ (_hlm_sums.results | selectattr('item', 'eq', _hlm_arch) | first).content.split()[0] }}"
+    owner: hlm-agent
+    group: hlm-agent
+    mode: "0755"
+  vars:
+    _hlm_tag: "{{ _hlm_release.json.tag_name if hlm_version == 'latest' else hlm_version }}"
+  notify: Restart hlm-agent
+
+- name: Write /etc/hlm-agent/agent.env
+  ansible.builtin.template:
+    src: agent.env.j2
+    dest: /etc/hlm-agent/agent.env
+    owner: root
+    group: hlm-agent
+    mode: "0640"
+  diff: false
+  no_log: true
+  notify: Restart hlm-agent
+
+- name: Install the systemd unit
+  ansible.builtin.copy:
+    src: hlm-agent.service
+    dest: /etc/systemd/system/hlm-agent.service
+    mode: "0644"
+  register: _hlm_unit
+  notify: Restart hlm-agent
+
+- name: SMART collection
+  when: hlm_smart | bool
+  block:
+    - name: Install smartmontools
+      ansible.builtin.apt:
+        name: smartmontools
+        state: present
+        cache_valid_time: 86400
+
+    - name: Install the root-owned SMART collector
+      ansible.builtin.copy:
+        src: smart-collect.sh
+        dest: /usr/local/lib/hlm-agent/
+        owner: root
+        group: root
+        mode: "0755"
+        directory_mode: "0755"
+
+    - name: Install the SMART service and timer
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: /etc/systemd/system/
+        mode: "0644"
+      loop: [hlm-agent-smart.service, hlm-agent-smart.timer]
+      register: _hlm_smart_units
+
+    - name: Enable the hourly SMART timer
+      ansible.builtin.systemd_service:
+        name: hlm-agent-smart.timer
+        enabled: true
+        state: started
+        daemon_reload: "{{ _hlm_smart_units is changed }}"
+
+- name: Enable and start hlm-agent
+  ansible.builtin.systemd_service:
+    name: hlm-agent
+    enabled: true
+    state: started
+    daemon_reload: "{{ _hlm_unit is changed }}"

@@ -1,19 +1,14 @@
 ---
+# present: install or update the agent. absent: remove it completely.
+hlm_agent_state: present
+
 # Hub address, as reachable from the hosts (https:// recommended).
 hlm_hub_url: ""
-
-# Option A, recommended for mass deployment: an API token with the hosts:write scope.
-# Each host registers itself through the API on first run (store it in ansible-vault).
-hlm_api_token: ""
-# Option B: a per-host agent token created in the UI ("Ajouter un hôte"), e.g. in host_vars.
+# Agent token. Either a shared enrollment token (enr_…, same value for every host:
+# each machine enrolls itself on first connection), or a per-host token from the UI.
 hlm_agent_token: ""
-# Hub public key. Returned by the API on registration; required with option B.
+# Hub public key, the same for every host.
 hlm_key: ""
-
-# Name shown in the dashboard.
-hlm_host_name: "{{ inventory_hostname }}"
-# On registration, reuse a host of the same name and give it a new token (re-install).
-hlm_rotate_if_exists: false
 
 # Release to install: "latest" or a tag such as v0.1.42.
 hlm_version: latest
@@ -21,9 +16,7 @@ hlm_repo: midnights-ra1n/homelab-monitoring
 
 # Accept a plain http:// hub (unencrypted link, trusted LAN only).
 hlm_allow_insecure: "{{ hlm_hub_url is match('^http://') }}"
-# Daily self-update. Disable when pinning hlm_version, or Ansible and the agent will fight.
+# Daily self-update. Disabled when pinning hlm_version, so Ansible and the agent agree.
 hlm_auto_update: "{{ hlm_version == 'latest' }}"
-# SMART collection; off by default on virtual machines, which expose no SMART data.
+# SMART collection; off by default on virtual machines and containers.
 hlm_smart: "{{ ansible_facts.virtualization_role | default('host') != 'guest' }}"
-# Verify the hub's TLS certificate when calling the API from the controller.
-hlm_validate_certs: true

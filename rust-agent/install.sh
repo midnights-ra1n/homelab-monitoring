@@ -7,7 +7,7 @@
 #   SMART=false           skip SMART collection (smartmontools + hourly root timer)
 #   VERSION=v0.1.12       pin a release (default: latest)
 #   REPO=owner/name       GitHub repository hosting the releases
-# Uninstall: sh install.sh --uninstall
+# Uninstall: curl -fsSL https://raw.githubusercontent.com/midnights-ra1n/homelab-monitoring/stable/rust-agent/uninstall.sh | sudo sh
 set -eu
 
 REPO="${REPO:-midnights-ra1n/homelab-monitoring}"
@@ -24,12 +24,10 @@ die() { echo "hlm-agent install: $*" >&2; exit 1; }
 command -v systemctl >/dev/null || die "systemd is required"
 
 if [ "${1:-}" = "--uninstall" ]; then
-  systemctl disable --now hlm-agent hlm-agent-smart.timer 2>/dev/null || true
-  rm -f "$UNIT" "$SYSTEMD/hlm-agent-smart.service" "$SYSTEMD/hlm-agent-smart.timer"
-  rm -rf "$PREFIX" "$CONF_DIR" "$LIBEXEC" "$STATE"
-  systemctl daemon-reload
-  id hlm-agent >/dev/null 2>&1 && userdel hlm-agent
-  echo "hlm-agent removed"; exit 0
+  # Kept for compatibility; uninstall.sh is the documented way.
+  fetch() { curl -fsSL --proto '=https' "$1" 2>/dev/null || wget -qO- --https-only "$1"; }
+  fetch "https://raw.githubusercontent.com/$REPO/stable/rust-agent/uninstall.sh" | sh
+  exit 0
 fi
 
 case "$(uname -m)" in

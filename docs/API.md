@@ -52,7 +52,7 @@ En HTTP (sans reverse proxy HTTPS), le jeton circule en clair : réservez cet us
 |---|---|
 | `status:read` | `GET /api/v1/status` |
 | `hosts:read` | `GET /api/v1/hosts`, `GET /api/v1/hosts/{id}` |
-| `hosts:write` | `POST /api/v1/hosts` (enregistrement d'un hôte, utilisé par le rôle Ansible) |
+| `hosts:write` | `POST /api/v1/hosts` (enregistrement d'un hôte depuis un outil d'automatisation) |
 | `metrics:read` | `GET /api/v1/hosts/{id}/metrics` |
 | `monitors:read` | `GET /api/v1/monitors`, `GET /api/v1/monitors/{id}`, `GET /api/v1/monitors/{id}/results` |
 | `updates:read` | `GET /api/v1/updates` |
@@ -172,7 +172,7 @@ Scope `hosts:read`. Liste des hôtes équipés de l'agent, triée par nom. Ajout
 
 ### `POST /api/v1/hosts`
 
-Scope `hosts:write`. Enregistre un hôte et renvoie les identifiants de son agent. C'est la route utilisée par le rôle Ansible pour un déploiement sans intervention ([docs/AGENT.md](AGENT.md)).
+Scope `hosts:write`. Enregistre un hôte et renvoie les identifiants de son agent, pour vos propres outils d'automatisation. Pour un déploiement en masse, le jeton commun (*Hôtes → Déploiement en masse*, [docs/AGENT.md](AGENT.md)) est souvent plus simple.
 
 ```http
 POST /api/v1/hosts

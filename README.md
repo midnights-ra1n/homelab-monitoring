@@ -44,7 +44,9 @@ curl -fsSL https://raw.githubusercontent.com/midnights-ra1n/homelab-monitoring/s
   | sudo HUB_URL='https://monitoring.example.fr' TOKEN='…' KEY='…' sh
 ```
 
-Le script est idempotent et non interactif : relancé sans `TOKEN`, il met seulement le binaire à jour. Pour un parc entier, le rôle Ansible [`deploy/ansible/roles/hlm_agent`](deploy/ansible/roles/hlm_agent) enregistre chaque machine automatiquement via l'API. Tout est détaillé dans [docs/AGENT.md](docs/AGENT.md).
+Pour plusieurs machines, **Hôtes → Déploiement en masse** fournit un jeton commun : la même ligne partout, chaque machine s'inscrit seule. Pour Ansible, le rôle `deploy/ansible/roles/hlm_agent` s'intègre à un playbook existant ([docs/ANSIBLE.md](docs/ANSIBLE.md)). Détails et dépannage : [docs/AGENT.md](docs/AGENT.md).
+
+Désinstaller : `curl -fsSL https://raw.githubusercontent.com/midnights-ra1n/homelab-monitoring/stable/rust-agent/uninstall.sh | sudo sh`
 
 ## Sécurité
 

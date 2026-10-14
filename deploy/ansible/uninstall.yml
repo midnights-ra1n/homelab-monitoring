@@ -1,0 +1,9 @@
+---
+# ansible-playbook uninstall.yml --limit <hosts>
+- name: Remove the Homelab Monitoring agent
+  hosts: monitored
+  become: true
+  roles:
+    - role: hlm_agent
+      vars:
+        hlm_agent_state: absent

@@ -257,14 +257,27 @@ export function CodeBlock({ text }: { text: string }) {
 export function UptimeBars({ days }: { days: Day[] }) {
   const measured = days.filter((d) => d.uptime != null);
   const avg = measured.length ? measured.reduce((a, d) => a + (d.uptime ?? 0), 0) / measured.length : null;
+  const [tip, setTip] = useState<{ d: Day; x: number; y: number }>();
+  const pct = (u: number | null) => (u == null ? "Aucune donnée" : `${(u * 100).toFixed(2).replace(".", ",")} % disponible`);
   return (
-    <div>
+    <div onMouseLeave={() => setTip(undefined)}>
       <div className="uptime" role="img" aria-label={`Disponibilité sur ${days.length} jours : ${avg == null ? "aucune donnée" : (avg * 100).toFixed(2) + " %"}`}>
         {days.map((d) => (
           <span key={d.day} className={`d-${d.worst}`}
-            title={`${new Date(d.day * 1000).toLocaleDateString("fr-FR")} · ${d.uptime == null ? "aucune donnée" : (d.uptime * 100).toFixed(2) + " %"} · ${statusLabel[d.worst]}`} />
+            onMouseEnter={(e) => {
+              // Viewport coordinates: the tooltip is position:fixed so cards and tables cannot clip it.
+              const r = e.currentTarget.getBoundingClientRect();
+              setTip({ d, x: r.left + r.width / 2, y: r.top });
+            }} />
         ))}
       </div>
+      {tip && (
+        <div className="uptime-tip" aria-hidden style={{ left: tip.x, top: tip.y }}>
+          <div className="chart-tip-time">{new Date(tip.d.day * 1000).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "long" })}</div>
+          <div className="chart-tip-row"><span className={`chart-tip-swatch d-${tip.d.worst}`} /><span>{tip.d.uptime == null ? "Pas de mesure" : statusLabel[tip.d.worst]}</span></div>
+          <strong>{pct(tip.d.uptime)}</strong>
+        </div>
+      )}
       <div className="uptime-legend"><span>Il y a {days.length} jours</span><span className="num">{avg == null ? "—" : `${(avg * 100).toFixed(2).replace(".", ",")} %`}</span><span>Aujourd'hui</span></div>
     </div>
   );
