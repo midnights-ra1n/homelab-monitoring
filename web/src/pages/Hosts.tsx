@@ -5,6 +5,7 @@ import { Alert, Button, Card, Chart, CodeBlock, Dialog, Link, Progress, Segmente
 import { DiskCard, type HostDisks } from "./Disks";
 import { AddHostWizard, InstallInstructions, UNINSTALL_COMMAND } from "./AddHostWizard";
 import { MassDeployDialog } from "./MassDeploy";
+import { AgentVersion, useHostAction } from "./AgentVersion";
 
 export function HostsPage() {
   const { data, error, refresh } = usePoll(() => api.get<Host[]>("/api/hosts"), 15000);
@@ -29,7 +30,7 @@ export function HostsPage() {
         ) : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Nom</th><th>État</th><th>Système</th><th className="r">CPU</th><th className="r">Mémoire</th><th className="r">Disque</th><th className="r">Réseau ↓ / ↑</th><th>Dernier contact</th></tr></thead>
+              <thead><tr><th>Nom</th><th>État</th><th>Système</th><th className="r">CPU</th><th className="r">Mémoire</th><th className="r">Disque</th><th className="r">Réseau ↓ / ↑</th><th>Agent</th><th>Dernier contact</th></tr></thead>
               <tbody>
                 {data?.map((h) => (
                   <tr key={h.id} className="link" onClick={() => navigate(`/hosts/${h.id}`)}>
@@ -40,6 +41,7 @@ export function HostsPage() {
                     <td className="r">{fmtPct(pct(h.latest.mem_used, h.latest.mem_total))}</td>
                     <td className="r">{fmtPct(pct(h.latest.disk_used, h.latest.disk_total))}</td>
                     <td className="r">{fmtBytes(h.latest.net_rx, true)} / {fmtBytes(h.latest.net_tx, true)}</td>
+                    <td><AgentVersion h={h} /></td>
                     <td className="muted">{fmtAgo(h.last_seen)}</td>
                   </tr>
                 ))}
@@ -60,6 +62,7 @@ export function HostDetailPage({ id }: { id: number }) {
   const host = usePoll(() => api.get<Host>(`/api/hosts/${id}`), 10000, [id]);
   const [range, setRange] = useState<Range>("24h");
   const metrics = usePoll(() => api.get<HostSeries>(`/api/hosts/${id}/metrics?range=${range}`), 30000, [id, range]);
+  const agentAction = useHostAction((updated) => host.setData(updated));
   const disks = usePoll(() => api.get<HostDisks[]>("/api/disks"), 300000, [id]);
   const myDisks = disks.data?.find((d) => d.host_id === id);
   const [install, setInstall] = useState<Install>();
@@ -127,7 +130,8 @@ export function HostDetailPage({ id }: { id: number }) {
             <dt>Mémoire</dt><dd>{fmtBytes(h.info.mem_total)}</dd>
             <dt>Démarré le</dt><dd>{h.info.boot_time ? fmtDate(h.info.boot_time) : "—"}</dd>
             <dt>Charge</dt><dd className="num">{l.load1?.toFixed(2).replace(".", ",") ?? "—"}</dd>
-            <dt>Agent</dt><dd className="mono">{h.info.agent_version || "—"}</dd>
+            <dt>Agent</dt><dd><AgentVersion h={h} onUpdate={() => agentAction.run(h, "update_agent")} updating={agentAction.busy === `${h.id}:update_agent`} />
+              {h.action?.action === "update_agent" && h.action.state === "failed" && <div className="xs" style={{ color: "var(--danger-fg)" }}>{h.action.message}</div>}</dd>
           </dl>
         </Card>
       </div>

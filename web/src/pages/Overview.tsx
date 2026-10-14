@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Eye, EyeOff, Columns2, Square } from "lucide-react";
 import { api, certDays, fmtMs, fmtPct, pct, statusLabel, type Overview, type Status } from "../api";
 import { updateTotals } from "./Updates";
+import { AgentVersion } from "./AgentVersion";
 import { Alert, Button, Card, Chart, IconButton, Kpi, Link, StatusBadge, StatusIcon, UptimeBars, navigate, usePoll, useToast } from "../ui";
 
 type WidgetId = "kpis" | "problems" | "latency" | "updates" | "uptime" | "hosts";
@@ -196,7 +197,7 @@ function WidgetView({ id, data }: { id: WidgetId; data: Overview }) {
           {data.hosts.length === 0 ? <div className="empty small">Aucun hôte. Installez l'agent depuis la page Hôtes.</div> : (
             <div className="table-wrap">
               <table>
-                <thead><tr><th>Hôte</th><th>État</th><th className="r">CPU</th><th className="r">Mémoire</th><th className="r">Disque</th><th className="r">Temp.</th></tr></thead>
+                <thead><tr><th>Hôte</th><th>État</th><th className="r">CPU</th><th className="r">Mémoire</th><th className="r">Disque</th><th className="r">Temp.</th><th>Agent</th></tr></thead>
                 <tbody>
                   {data.hosts.map((h) => (
                     <tr key={h.id} className="link" onClick={() => navigate(`/hosts/${h.id}`)}>
@@ -206,6 +207,7 @@ function WidgetView({ id, data }: { id: WidgetId; data: Overview }) {
                       <td className="r">{fmtPct(pct(h.latest.mem_used, h.latest.mem_total))}</td>
                       <td className="r">{fmtPct(pct(h.latest.disk_used, h.latest.disk_total))}</td>
                       <td className="r">{h.latest.temp != null ? `${Math.round(h.latest.temp)} °C` : "—"}</td>
+                      <td><AgentVersion h={h} /></td>
                     </tr>
                   ))}
                 </tbody>

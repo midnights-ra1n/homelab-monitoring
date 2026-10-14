@@ -18,5 +18,7 @@ hlm_repo: midnights-ra1n/homelab-monitoring
 hlm_allow_insecure: "{{ hlm_hub_url is match('^http://') }}"
 # Daily self-update. Disabled when pinning hlm_version, so Ansible and the agent agree.
 hlm_auto_update: "{{ hlm_version == 'latest' }}"
+# "Check / install updates" buttons of the dashboard (root-owned helper, fixed apt actions).
+hlm_remote_updates: true
 # SMART collection; off by default on virtual machines and containers.
 hlm_smart: "{{ ansible_facts.virtualization_role | default('host') != 'guest' }}"

@@ -1,0 +1,12 @@
+[Unit]
+Description=Homelab monitoring agent: run a requested apt action
+Documentation=https://github.com/midnights-ra1n/homelab-monitoring
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Root-owned helper, fixed actions only (apt-get update / upgrade); see apt-action.sh.
+ExecStart=/usr/local/lib/hlm-agent/apt-action.sh
+TimeoutStartSec=2h
+Nice=10
+IOSchedulingClass=idle

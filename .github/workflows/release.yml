@@ -51,7 +51,8 @@ jobs:
         run: cargo test --locked
       - name: Check the Ansible role ships the same agent files
         run: |
-          for f in hlm-agent.service hlm-agent-smart.service hlm-agent-smart.timer smart-collect.sh; do
+          for f in hlm-agent.service hlm-agent-smart.service hlm-agent-smart.timer smart-collect.sh \
+                   hlm-agent-apt.path hlm-agent-apt.service apt-action.sh; do
             diff -u "rust-agent/$f" "deploy/ansible/roles/hlm_agent/files/$f"
           done
 

@@ -89,10 +89,15 @@ type agentMsg struct {
 	Metrics *agentMetrics `json:"metrics,omitempty"`
 	Updates *agentUpdates `json:"updates,omitempty"`
 	Smart   *smartReport  `json:"smart,omitempty"`
+	// action_result fields
+	Action  string `json:"action,omitempty"`
+	State   string `json:"state,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 type agentConn struct {
 	conn *websocket.Conn
+	ctx  context.Context // the agent connection's context, for writes from other requests
 }
 
 type Host struct {
@@ -106,7 +111,17 @@ type Host struct {
 	Info        json.RawMessage `json:"info"`
 	Latest      json.RawMessage `json:"latest"`
 	Updates     *agentUpdates   `json:"updates"`
+	Action      *hostAction     `json:"action"`         // last dashboard action (updates, agent update)
+	AgentLatest string          `json:"agent_latest"`   // latest published agent release, "" if unknown
+	Outdated    bool            `json:"agent_outdated"` // agent older than AgentLatest
 	CreatedAt   int64           `json:"created_at"`
+}
+
+type hostAction struct {
+	Action  string `json:"action"` // check_updates, apply_updates, update_agent
+	State   string `json:"state"`  // pending, running, done, failed
+	Message string `json:"message"`
+	At      int64  `json:"at"`
 }
 
 // withoutPackages keeps update counts but drops package lists, for list views polled often.
@@ -156,7 +171,7 @@ func (s *Server) hostStatus(h *Host) string {
 }
 
 func (s *Server) loadHosts(where string, args ...any) ([]Host, error) {
-	rows, err := s.db.Query(`SELECT id,name,last_seen,maintenance,public,info,latest,updates,created_at FROM hosts `+where+` ORDER BY name COLLATE NOCASE`, args...)
+	rows, err := s.db.Query(`SELECT id,name,last_seen,maintenance,public,info,latest,updates,action,created_at FROM hosts `+where+` ORDER BY name COLLATE NOCASE`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -164,8 +179,8 @@ func (s *Server) loadHosts(where string, args ...any) ([]Host, error) {
 	hosts := []Host{}
 	for rows.Next() {
 		var h Host
-		var info, latest, updates string
-		if err := rows.Scan(&h.ID, &h.Name, &h.LastSeen, &h.Maintenance, &h.Public, &info, &latest, &updates, &h.CreatedAt); err != nil {
+		var info, latest, updates, action string
+		if err := rows.Scan(&h.ID, &h.Name, &h.LastSeen, &h.Maintenance, &h.Public, &info, &latest, &updates, &action, &h.CreatedAt); err != nil {
 			return nil, err
 		}
 		h.Info, h.Latest = json.RawMessage(info), json.RawMessage(latest)
@@ -173,6 +188,14 @@ func (s *Server) loadHosts(where string, args ...any) ([]Host, error) {
 		if json.Unmarshal([]byte(updates), &u) == nil && u.CheckedAt > 0 {
 			h.Updates = &u
 		}
+		var a hostAction
+		if json.Unmarshal([]byte(action), &a) == nil && a.Action != "" {
+			h.Action = &a
+		}
+		var ai agentInfo
+		json.Unmarshal(h.Info, &ai)
+		h.AgentLatest = latestAgentVersion()
+		h.Outdated = versionLess(ai.AgentVersion, h.AgentLatest)
 		hosts = append(hosts, h)
 	}
 	if err := rows.Err(); err != nil {
@@ -441,7 +464,7 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 	if old := s.agents[id]; old != nil {
 		old.conn.Close(websocket.StatusPolicyViolation, "replaced by a newer connection")
 	}
-	me := &agentConn{conn: c}
+	me := &agentConn{conn: c, ctx: r.Context()}
 	s.agents[id] = me
 	s.agentsMu.Unlock()
 	defer func() {
@@ -481,6 +504,8 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 			if _, err := s.db.Exec(`UPDATE hosts SET info=? WHERE id=?`, string(b), id); err != nil {
 				slog.Error("store agent info", "err", err)
 			}
+		case m.Type == "action_result" && hostActions[m.Action] && (m.State == "running" || m.State == "done" || m.State == "failed"):
+			s.setHostAction(id, m.Action, m.State, m.Message)
 		case m.Type == "smart" && m.Smart != nil:
 			if err := s.storeSmart(id, hostName, m.Smart); err != nil {
 				slog.Error("store smart", "err", err)

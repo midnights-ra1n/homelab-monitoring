@@ -115,6 +115,7 @@ func run(cfg Config) error {
 	go s.watchHosts(ctx)
 	go s.runRetention(ctx)
 	go s.runReports(ctx)
+	go s.runReleaseCheck(ctx)
 
 	srv := &http.Server{
 		Addr:              cfg.Listen,

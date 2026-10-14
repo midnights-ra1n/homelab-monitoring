@@ -103,6 +103,7 @@ var migrations = []string{
 		created_at INTEGER NOT NULL,
 		last_used_at INTEGER NOT NULL DEFAULT 0,
 		uses INTEGER NOT NULL DEFAULT 0);`,
+	`ALTER TABLE hosts ADD COLUMN action TEXT NOT NULL DEFAULT '{}';`,
 }
 
 func openDB(dir string) (*sql.DB, error) {

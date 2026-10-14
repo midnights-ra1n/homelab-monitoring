@@ -13,7 +13,10 @@ ExecStart=/opt/hlm-agent/hlm-agent
 Restart=always
 RestartSec=5
 Nice=10
-MemoryMax=64M
+# The agent itself uses a few MiB; the margin is for apt-get, which it runs to list updates.
+MemoryMax=256M
+# If a child (apt-get) is ever OOM-killed, keep the agent running instead of restarting it.
+OOMPolicy=continue
 
 # Hardening: the agent only reads /proc and /sys and needs to rewrite its own binary to self-update.
 NoNewPrivileges=yes

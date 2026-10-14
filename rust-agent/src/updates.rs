@@ -22,20 +22,32 @@ pub struct Updates {
     lists_updated_at: u64,
 }
 
-/// None when apt is not available (non-Debian host): nothing is reported.
+/// apt can need well over 64 MiB to load its package cache on a host with many repositories.
+const APT_MIN_MEMORY: u64 = 192 << 20;
+
+/// Memory limit of our own cgroup (cgroup v2), if any.
+fn cgroup_memory_max() -> Option<u64> {
+    let cg = std::fs::read_to_string("/proc/self/cgroup").ok()?;
+    let path = cg.lines().find_map(|l| l.strip_prefix("0::"))?;
+    std::fs::read_to_string(format!("/sys/fs/cgroup{path}/memory.max")).ok()?.trim().parse().ok()
+}
+
+/// None when apt is not available (non-Debian host) or cannot run safely: nothing is reported.
 pub fn check() -> Option<Updates> {
+    // An apt-get killed by the OOM killer takes the whole service down with it on units
+    // installed before v0.1.3 (MemoryMax=64M): skip instead of entering a restart loop.
+    if let Some(limit) = cgroup_memory_max().filter(|l| *l < APT_MIN_MEMORY) {
+        eprintln!("hlm-agent: updates check skipped: service memory limit {} MiB is too low for apt, re-run install.sh to update the unit", limit >> 20);
+        return None;
+    }
     let out = Command::new("apt-get")
-        .args([
-            "-s", "-q", "-o", "Debug::NoLocking=1",
-            // Never try to write the binary caches (the service filesystem is read-only).
-            "-o", "Dir::Cache::pkgcache=", "-o", "Dir::Cache::srcpkgcache=",
-            "dist-upgrade",
-        ])
+        // Reads the package cache kept fresh by apt-daily; writes nothing.
+        .args(["-s", "-q", "-o", "Debug::NoLocking=1", "dist-upgrade"])
         .env("LC_ALL", "C")
         .output()
         .ok()?;
     if !out.status.success() {
-        eprintln!("hlm-agent: apt-get -s failed: {}", String::from_utf8_lossy(&out.stderr).trim());
+        eprintln!("hlm-agent: apt-get -s failed ({}): {}", out.status, String::from_utf8_lossy(&out.stderr).trim());
         return None;
     }
     let lists_updated_at = std::fs::metadata("/var/lib/apt/lists")

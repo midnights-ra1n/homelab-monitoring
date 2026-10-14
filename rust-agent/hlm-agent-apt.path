@@ -1,0 +1,10 @@
+[Unit]
+Description=Homelab monitoring agent: apt actions requested from the dashboard
+Documentation=https://github.com/midnights-ra1n/homelab-monitoring
+
+[Path]
+PathExists=/var/lib/hlm-agent/state/apt-request
+Unit=hlm-agent-apt.service
+
+[Install]
+WantedBy=paths.target

@@ -123,6 +123,52 @@
         state: started
         daemon_reload: "{{ _hlm_smart_units is changed }}"
 
+- name: Dashboard apt actions
+  when: hlm_remote_updates | bool
+  block:
+    - name: Install the root-owned apt helper
+      ansible.builtin.copy:
+        src: apt-action.sh
+        dest: /usr/local/lib/hlm-agent/
+        owner: root
+        group: root
+        mode: "0755"
+        directory_mode: "0755"
+
+    - name: Install the apt path unit and service
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: /etc/systemd/system/
+        mode: "0644"
+      loop: [hlm-agent-apt.path, hlm-agent-apt.service]
+      register: _hlm_apt_units
+
+    - name: Enable the apt path unit
+      ansible.builtin.systemd_service:
+        name: hlm-agent-apt.path
+        enabled: true
+        state: started
+        daemon_reload: "{{ _hlm_apt_units is changed }}"
+
+- name: Remove dashboard apt actions
+  when: not hlm_remote_updates | bool
+  block:
+    - name: Disable the apt path unit
+      ansible.builtin.systemd_service:
+        name: hlm-agent-apt.path
+        enabled: false
+        state: stopped
+      failed_when: false
+
+    - name: Remove the apt helper and units
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /usr/local/lib/hlm-agent/apt-action.sh
+        - /etc/systemd/system/hlm-agent-apt.path
+        - /etc/systemd/system/hlm-agent-apt.service
+
 - name: Enable and start hlm-agent
   ansible.builtin.systemd_service:
     name: hlm-agent

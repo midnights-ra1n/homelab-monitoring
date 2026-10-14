@@ -35,6 +35,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("DELETE /api/hosts/{id}", auth(s.handleDeleteHost))
 	mux.HandleFunc("POST /api/hosts/{id}/token", auth(s.handleRotateHostToken))
 	mux.HandleFunc("GET /api/hosts/{id}/metrics", auth(s.handleHostMetrics))
+	mux.HandleFunc("POST /api/hosts/{id}/action", auth(s.handleHostAction))
 
 	mux.HandleFunc("GET /api/monitors", auth(s.handleListMonitors))
 	mux.HandleFunc("POST /api/monitors", auth(s.handleCreateMonitor))

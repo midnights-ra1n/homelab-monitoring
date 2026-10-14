@@ -4,6 +4,7 @@
 //! must sign the agent's random nonce with the private key matching KEY. An agent
 //! therefore never talks to an impostor hub, even behind a compromised proxy.
 
+mod actions;
 mod collect;
 mod smart;
 mod update;
@@ -171,7 +172,11 @@ async fn session(cfg: &Config, token: &str, collector: &mut collect::Collector) 
     let mut tick = tokio::time::interval(interval);
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     // Pending updates change slowly; apt-daily refreshes the lists about twice a day.
-    let mut upd = tokio::time::interval(Duration::from_secs(6 * 3600));
+    // The first check waits a minute so the agent itself starts instantly and cheaply.
+    let mut upd = tokio::time::interval_at(tokio::time::Instant::now() + Duration::from_secs(60), Duration::from_secs(6 * 3600));
+    // apt action requested from the dashboard and still running: (action, requested at).
+    let mut apt_pending: Option<(String, u64)> = None;
+    let mut apt_poll = tokio::time::interval(Duration::from_secs(5));
     // The root collector refreshes SMART hourly; forward each new file once.
     let mut smart_tick = tokio::time::interval(Duration::from_secs(600));
     let mut smart_sent = 0u64;
@@ -200,9 +205,55 @@ async fn session(cfg: &Config, token: &str, collector: &mut collect::Collector) 
                     return Failure::Retry(e.to_string());
                 }
             }
+            _ = apt_poll.tick(), if apt_pending.is_some() => {
+                let (action, since) = apt_pending.clone().unwrap();
+                let finished = actions::apt_result(since)
+                    .or_else(|| (actions::now() > since + 7200).then(|| (false, "Aucune réponse après 2 heures".to_string())));
+                if let Some((ok, message)) = finished {
+                    apt_pending = None;
+                    let r = serde_json::json!({"type": "action_result", "action": action, "state": if ok { "done" } else { "failed" }, "message": message});
+                    if let Err(e) = ws.send(Message::Text(r.to_string().into())).await {
+                        return Failure::Retry(e.to_string());
+                    }
+                    upd.reset_immediately(); // report the new package list right away
+                }
+            }
             msg = ws.next() => match msg {
                 // Pings are answered by tungstenite on the next write/flush.
                 Some(Ok(Message::Close(f))) => return Failure::Retry(format!("closed by hub: {f:?}")),
+                Some(Ok(Message::Text(t))) => {
+                    let Ok(m) = serde_json::from_str::<serde_json::Value>(&t) else { continue };
+                    if m["type"] != "action" { continue; }
+                    let action = m["action"].as_str().unwrap_or("").to_string();
+                    let (state, message) = match action.as_str() {
+                        "check_updates" | "apply_updates" => {
+                            let kind = if action == "check_updates" { "refresh" } else { "upgrade" };
+                            match actions::request_apt(kind) {
+                                Ok(()) => { apt_pending = Some((action.clone(), actions::now())); ("running", String::new()) }
+                                Err(e) => ("failed", e),
+                            }
+                        }
+                        "update_agent" => {
+                            let repo = cfg.repo.clone();
+                            match tokio::task::spawn_blocking(move || update::check(&repo)).await {
+                                Ok(Ok(true)) => {
+                                    let r = serde_json::json!({"type": "action_result", "action": action, "state": "done", "message": "Mise à jour installée, redémarrage de l'agent"});
+                                    let _ = ws.send(Message::Text(r.to_string().into())).await;
+                                    let _ = ws.close(None).await;
+                                    std::process::exit(0); // systemd restarts the new binary
+                                }
+                                Ok(Ok(false)) => ("done", "L'agent est déjà à jour".to_string()),
+                                Ok(Err(e)) => ("failed", e),
+                                Err(e) => ("failed", e.to_string()),
+                            }
+                        }
+                        _ => ("failed", "Action inconnue".to_string()),
+                    };
+                    let r = serde_json::json!({"type": "action_result", "action": action, "state": state, "message": message});
+                    if let Err(e) = ws.send(Message::Text(r.to_string().into())).await {
+                        return Failure::Retry(e.to_string());
+                    }
+                }
                 Some(Ok(_)) => {}
                 Some(Err(e)) => return Failure::Retry(e.to_string()),
                 None => return Failure::Retry("connection closed".into()),

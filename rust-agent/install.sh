@@ -5,6 +5,7 @@
 #   ALLOW_INSECURE=true   accept a plain http:// hub
 #   AUTO_UPDATE=false     disable the daily self-update
 #   SMART=false           skip SMART collection (smartmontools + hourly root timer)
+#   REMOTE_UPDATES=false  forbid "check / install updates" buttons of the dashboard
 #   VERSION=v0.1.12       pin a release (default: latest)
 #   REPO=owner/name       GitHub repository hosting the releases
 # Uninstall: curl -fsSL https://raw.githubusercontent.com/midnights-ra1n/homelab-monitoring/stable/rust-agent/uninstall.sh | sudo sh
@@ -71,7 +72,8 @@ if [ -n "${TOKEN:-}" ] || [ ! -f "$CONF" ]; then
 fi
 
 RAW="https://raw.githubusercontent.com/$REPO/${VERSION:-stable}/rust-agent"
-for f in hlm-agent.service hlm-agent-smart.service hlm-agent-smart.timer smart-collect.sh; do
+for f in hlm-agent.service hlm-agent-smart.service hlm-agent-smart.timer smart-collect.sh \
+         hlm-agent-apt.path hlm-agent-apt.service apt-action.sh; do
   fetch "$RAW/$f" "$TMP/$f"
 done
 install -m 0644 "$TMP/hlm-agent.service" "$UNIT"
@@ -88,8 +90,20 @@ if [ "${SMART:-true}" != "false" ]; then
   install -m 0644 "$TMP/hlm-agent-smart.timer" "$SYSTEMD/hlm-agent-smart.timer"
 fi
 
+# Dashboard apt actions: root-owned helper started by a path unit, fixed actions only.
+install -d -o root -g root -m 0755 "$LIBEXEC"
+if [ "${REMOTE_UPDATES:-true}" != "false" ]; then
+  install -o root -g root -m 0755 "$TMP/apt-action.sh" "$LIBEXEC/apt-action.sh"
+  install -m 0644 "$TMP/hlm-agent-apt.path" "$SYSTEMD/hlm-agent-apt.path"
+  install -m 0644 "$TMP/hlm-agent-apt.service" "$SYSTEMD/hlm-agent-apt.service"
+else
+  systemctl disable --now hlm-agent-apt.path 2>/dev/null || true
+  rm -f "$LIBEXEC/apt-action.sh" "$SYSTEMD/hlm-agent-apt.path" "$SYSTEMD/hlm-agent-apt.service"
+fi
+
 systemctl daemon-reload
 systemctl enable hlm-agent >/dev/null 2>&1
+[ "${REMOTE_UPDATES:-true}" != "false" ] && systemctl enable --now hlm-agent-apt.path >/dev/null 2>&1
 if [ "${SMART:-true}" != "false" ]; then
   systemctl enable --now hlm-agent-smart.timer >/dev/null 2>&1
   systemctl start hlm-agent-smart.service || true

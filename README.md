@@ -48,6 +48,22 @@ Pour plusieurs machines, **Hôtes → Déploiement en masse** fournit un jeton c
 
 Désinstaller : `curl -fsSL https://raw.githubusercontent.com/midnights-ra1n/homelab-monitoring/stable/rust-agent/uninstall.sh | sudo sh`
 
+### Mettre à jour l'agent
+
+L'agent se met à jour seul chaque jour. La version installée de chaque machine est affichée dans *Hôtes*, avec un badge « À jour » ou « vX.Y.Z disponible ». Pour forcer la mise à jour :
+
+- **Depuis le tableau de bord** : fiche de l'hôte, bouton *Mettre à jour l'agent* (si l'agent est connecté).
+- **En ligne de commande**, sur la machine :
+
+  ```sh
+  curl -fsSL https://raw.githubusercontent.com/midnights-ra1n/homelab-monitoring/stable/rust-agent/install.sh | sudo sh
+  ```
+
+  Sans `TOKEN`, le script garde la configuration existante. Il installe la dernière release, après vérification de son empreinte SHA-256, ainsi que les **unités systemd** à jour, puis redémarre le service. C'est la seule méthode qui met aussi à jour les unités : la mise à jour automatique ne remplace que le binaire. Ajoutez `VERSION=v0.1.3` pour une version précise.
+- **Avec Ansible** : relancez votre playbook (`hlm_version: latest`, ou la nouvelle version si elle est figée).
+
+Vérifier : `/opt/hlm-agent/hlm-agent --version` et `systemctl status hlm-agent`.
+
 ## Sécurité
 
 - **Agent ↔ hub, authentification mutuelle (modèle Beszel)** : l'agent ouvre une WebSocket vers le hub avec son jeton (stocké haché côté hub) et un nonce aléatoire ; le hub doit signer ce nonce avec sa clé ed25519, dont l'agent connaît la clé publique (`KEY`). Un faux hub ne peut donc pas recevoir les métriques. L'agent refuse `http://` sauf `ALLOW_INSECURE=true`.

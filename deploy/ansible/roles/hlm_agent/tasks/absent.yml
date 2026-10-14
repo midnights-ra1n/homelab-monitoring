@@ -4,7 +4,7 @@
     name: "{{ item }}"
     state: stopped
     enabled: false
-  loop: [hlm-agent.service, hlm-agent-smart.timer]
+  loop: [hlm-agent.service, hlm-agent-smart.timer, hlm-agent-apt.path]
   failed_when: false
 
 - name: Remove files
@@ -15,6 +15,8 @@
     - /etc/systemd/system/hlm-agent.service
     - /etc/systemd/system/hlm-agent-smart.service
     - /etc/systemd/system/hlm-agent-smart.timer
+    - /etc/systemd/system/hlm-agent-apt.path
+    - /etc/systemd/system/hlm-agent-apt.service
     - /opt/hlm-agent
     - /etc/hlm-agent
     - /usr/local/lib/hlm-agent

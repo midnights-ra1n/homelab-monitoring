@@ -28,7 +28,11 @@ export interface HostUpdates {
 export interface Host {
   id: number; name: string; status: Status; last_seen: number; maintenance: boolean; public: boolean;
   connected: boolean; info: HostInfo; latest: HostLatest; updates: HostUpdates | null; created_at: number;
+  action: HostAction | null; agent_latest: string; agent_outdated: boolean;
 }
+export type HostActionName = "check_updates" | "apply_updates" | "update_agent";
+export interface HostAction { action: HostActionName; state: "pending" | "running" | "done" | "failed"; message: string; at: number }
+export const actionBusy = (h: Host) => !!h.action && (h.action.state === "pending" || h.action.state === "running") && Date.now() / 1000 - h.action.at < 7200;
 export interface Install { hub_url: string; key: string; token: string; command: string }
 
 export type MonitorType = "http" | "tcp" | "dns" | "ssl";
