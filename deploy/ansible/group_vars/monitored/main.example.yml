@@ -1,0 +1,5 @@
+---
+hlm_hub_url: https://monitoring.example.fr
+# Defined in vault.yml (ansible-vault create group_vars/monitored/vault.yml):
+#   vault_hlm_api_token: hlm_xxxxxxxx   # API token with the hosts:write scope
+hlm_api_token: "{{ vault_hlm_api_token }}"

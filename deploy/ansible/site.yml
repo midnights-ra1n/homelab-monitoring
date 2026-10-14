@@ -1,0 +1,7 @@
+---
+# ansible-playbook -i inventory.ini deploy/ansible/site.yml --ask-vault-pass
+- name: Deploy the Homelab Monitoring agent
+  hosts: monitored
+  become: true
+  roles:
+    - hlm_agent

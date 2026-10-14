@@ -1,0 +1,29 @@
+[Unit]
+Description=Homelab monitoring agent: SMART collection
+Documentation=https://github.com/midnights-ra1n/homelab-monitoring
+
+[Service]
+Type=oneshot
+# Root only to read the disks: no network, read-only system, only its output directory writable.
+ExecStart=/usr/local/lib/hlm-agent/smart-collect.sh
+PrivateNetwork=yes
+IPAddressDeny=any
+RestrictAddressFamilies=AF_UNIX
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/hlm-agent
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_SYS_RAWIO CAP_SYS_ADMIN CAP_CHOWN CAP_FOWNER
+UMask=0027
+Nice=19
+IOSchedulingClass=idle

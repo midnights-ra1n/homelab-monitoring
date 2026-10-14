@@ -1,0 +1,43 @@
+[Unit]
+Description=Homelab monitoring agent
+Documentation=https://github.com/midnights-ra1n/homelab-monitoring
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=hlm-agent
+Group=hlm-agent
+EnvironmentFile=/etc/hlm-agent/agent.env
+ExecStart=/opt/hlm-agent/hlm-agent
+Restart=always
+RestartSec=5
+Nice=10
+MemoryMax=64M
+
+# Hardening: the agent only reads /proc and /sys and needs to rewrite its own binary to self-update.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ReadWritePaths=/opt/hlm-agent
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

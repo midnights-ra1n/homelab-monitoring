@@ -1,0 +1,26 @@
+services:
+  hlm:
+    image: ghcr.io/midnights-ra1n/homelab-monitoring:latest
+    container_name: hlm
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - hlm-data:/data
+    environment:
+      # Public address of the dashboard; used in agent install commands and CSRF checks.
+      HLM_PUBLIC_URL: "https://monitoring.example.fr"
+      # Reverse proxy addresses allowed to set X-Forwarded-For / X-Forwarded-Proto.
+      HLM_TRUSTED_PROXIES: "172.16.0.0/12"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "1.0"
+
+volumes:
+  hlm-data:

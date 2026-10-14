@@ -1,0 +1,165 @@
+# Builds and publishes the hub image and the agent binaries (x86_64 + ARM64).
+# Runs only on pushes to the stable branch; ARM64 is built natively on Ubuntu 24.04 ARM runners.
+name: Release
+
+on:
+  push:
+    branches: [stable]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - id: v
+        run: echo "version=v0.1.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: 24, cache: npm, cache-dependency-path: web/package-lock.json }
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version-file: server/go.mod, cache-dependency-path: server/go.sum }
+      - name: Build web UI
+        working-directory: web
+        run: npm ci --no-audit --no-fund && npm run build
+      - name: Test server
+        working-directory: server
+        run: go vet ./... && go test -race ./...
+      - name: Ensure test mode is excluded from release builds
+        working-directory: server
+        # devmode.go is only compiled with -tags devmode; the release build must never pass it.
+        run: |
+          ! go list -f '{{join .GoFiles " "}}' . | grep -qw devmode.go
+          ! grep -n -- '-tags' ../Dockerfile
+      - name: Test agent
+        working-directory: rust-agent
+        run: cargo test --locked
+      - name: Check the Ansible role ships the same agent files
+        run: |
+          for f in hlm-agent.service hlm-agent-smart.service hlm-agent-smart.timer smart-collect.sh; do
+            diff -u "rust-agent/$f" "deploy/ansible/roles/hlm_agent/files/$f"
+          done
+
+  agent:
+    needs: [version, test]
+    strategy:
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, arch: x86_64, target: x86_64-unknown-linux-musl }
+          - { runner: ubuntu-24.04-arm, arch: aarch64, target: aarch64-unknown-linux-musl }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - name: Install toolchain
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq musl-tools
+          if ! command -v rustup >/dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
+          rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
+          rustup default stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with: { workspaces: rust-agent, key: "${{ matrix.target }}" }
+      - name: Build static binary
+        working-directory: rust-agent
+        env:
+          HLM_VERSION: ${{ needs.version.outputs.version }}
+        # musl gives a fully static binary that runs on any Debian release, whatever its glibc.
+        run: |
+          cargo build --release --locked --target ${{ matrix.target }}
+          mkdir -p ../dist
+          cp target/${{ matrix.target }}/release/hlm-agent ../dist/hlm-agent-linux-${{ matrix.arch }}
+          cd ../dist && sha256sum hlm-agent-linux-${{ matrix.arch }} > hlm-agent-linux-${{ matrix.arch }}.sha256
+          ./hlm-agent-linux-${{ matrix.arch }} --version
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with: { name: "agent-${{ matrix.arch }}", path: "dist/*", retention-days: 1 }
+
+  image:
+    needs: [version, test]
+    strategy:
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, platform: linux/amd64, pair: linux-amd64 }
+          - { runner: ubuntu-24.04-arm, platform: linux/arm64, pair: linux-arm64 }
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          build-args: VERSION=${{ needs.version.outputs.version }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.pair }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.pair }}
+          provenance: false
+      - name: Export digest
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with: { name: "digests-${{ matrix.pair }}", path: "${{ runner.temp }}/digests/*", retention-days: 1 }
+
+  manifest:
+    needs: [version, image]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { path: "${{ runner.temp }}/digests", pattern: "digests-*", merge-multiple: true }
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - name: Publish multi-arch manifest
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          docker buildx imagetools create \
+            -t "$IMAGE:latest" -t "$IMAGE:${{ needs.version.outputs.version }}" \
+            $(printf "$IMAGE@sha256:%s " *)
+          docker buildx imagetools inspect "$IMAGE:${{ needs.version.outputs.version }}"
+
+  release:
+    needs: [version, agent, manifest]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { path: dist, pattern: "agent-*", merge-multiple: true }
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release create "$VERSION" dist/* --repo "${{ github.repository }}" --target "${{ github.sha }}" \
+            --title "$VERSION" --generate-notes \
+            --notes "Image : \`ghcr.io/${{ github.repository }}:$VERSION\` (linux/amd64, linux/arm64)"

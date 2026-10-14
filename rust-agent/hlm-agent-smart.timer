@@ -1,0 +1,10 @@
+[Unit]
+Description=Hourly SMART collection for hlm-agent
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1h
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

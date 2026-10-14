@@ -1,0 +1,6 @@
+.git
+**/node_modules
+rust-agent/target
+server/web/dist
+**/.DS_Store
+*.pdf
