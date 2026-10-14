@@ -7,6 +7,7 @@ L'agent `hlm-agent` est un binaire Rust statique (musl) pour Debian, en `x86_64`
 | Une machine | *Hôtes → Ajouter un hôte* : assistant en 3 étapes, une ligne à copier |
 | Plusieurs machines | *Hôtes → Déploiement en masse* : un **jeton commun**, la même ligne (ou les mêmes variables Ansible) partout |
 | Un parc géré par Ansible | Le rôle `hlm_agent` : voir **[docs/ANSIBLE.md](ANSIBLE.md)** |
+| Un Proxmox et ses conteneurs LXC | Assistant, type *Serveur Proxmox* : voir [Proxmox et LXC](#proxmox-et-conteneurs-lxc) |
 | Retirer l'agent | Une ligne : [Désinstaller](#désinstaller) |
 
 ## Ajouter une machine
@@ -37,6 +38,33 @@ L'adresse du hub utilisée dans les commandes est, par ordre de priorité :
 - Le jeton commun ne permet donc que d'inscrire de nouvelles machines, jamais d'usurper une machine existante. Une fois le déploiement fini, vous pouvez le révoquer.
 - Si vous supprimez un hôte inscrit de cette façon alors que son agent tourne encore, l'agent se réinscrit tant que le jeton commun est valide. Désinstallez d'abord l'agent.
 
+## Proxmox et conteneurs LXC
+
+Dans l'assistant, le type *Serveur Proxmox* propose **Installer aussi dans les conteneurs LXC Debian démarrés**, activé par défaut. La commande contient alors `LXC=all` et un jeton commun valable 7 jours (`LXC_TOKEN`). Le script :
+
+1. installe l'agent sur le Proxmox lui-même ;
+2. pour chaque conteneur démarré (`pct list`), vérifie qu'il s'agit d'une Debian avec systemd. Les autres conteneurs sont ignorés ;
+3. copie le binaire, déjà vérifié, et les fichiers d'installation dans le conteneur avec `pct push`. **Aucun accès Internet n'est nécessaire dans les conteneurs**, seulement l'accès au hub ;
+4. lance l'installation dans le conteneur, sans SMART. Chaque conteneur s'inscrit sous son nom avec le jeton commun.
+
+Il affiche ensuite un bilan (`CT 101 (nextcloud): installed`…). Relancez la même ligne pour équiper les conteneurs créés depuis : ceux qui ont déjà l'agent ne sont pas réinscrits. Les conteneurs arrêtés et les machines virtuelles (QEMU) ne sont pas concernés ; installez l'agent dans une VM comme sur n'importe quelle machine.
+
+Dans un conteneur non privilégié sans *nesting*, systemd ne peut pas toujours mettre en place l'isolation du service (espaces de noms). Le script le détecte et ajoute alors `/etc/systemd/system/hlm-agent.service.d/container.conf`, qui retire ces protections **dans ce conteneur uniquement**.
+
+Désinstaller partout : `curl -fsSL …/uninstall.sh | sudo LXC=all sh` sur le Proxmox.
+
+## Docker
+
+Si Docker est installé au moment de l'installation de l'agent, le suivi Docker s'active tout seul. Pour le forcer : `DOCKER=true` ; pour le couper : `DOCKER=false`. Si vous installez Docker plus tard, relancez `install.sh`.
+
+- **Toutes les minutes** : un script root (`docker-helper.sh collect`, lancé par `hlm-agent-docker.timer`, sans réseau) enregistre `docker inspect` et `docker stats`. L'agent lit ce relevé, sans jamais accéder lui-même au socket Docker, qui donne l'équivalent des droits root. Le relevé donne l'état, le healthcheck, les redémarrages, le CPU, la mémoire et le réseau de chaque conteneur.
+- **Toutes les 6 heures** (et 2 minutes après le démarrage) : l'agent compare l'empreinte de chaque image locale à celle publiée sur son registre (Docker Hub, GHCR, Quay, registres auto-hébergés…). Il lit seulement l'empreinte du manifeste, sans rien télécharger et sans privilèges. Résultats possibles :
+  - « Mise à jour disponible » ou « À jour » ;
+  - « Image locale » pour une image construite sur la machine ;
+  - « Figée » pour une image référencée par son empreinte ;
+  - « Inconnu » pour un registre privé ou injoignable.
+- **Mettre à jour un conteneur** depuis la page *Conteneurs* ou la fiche de l'hôte. Ce n'est possible que pour les conteneurs **Docker Compose**. Le helper root lit les labels Compose du conteneur et lance, dans son dossier, `docker compose pull <service>` puis `docker compose up -d <service>`. Les volumes sont conservés et le journal s'affiche au retour. Les conteneurs lancés avec `docker run` sont signalés, mais pas recréés : leur commande d'origine n'est pas connue. Comme pour apt, `REMOTE_UPDATES=false` retire cette possibilité.
+
 ## Options de install.sh
 
 `install.sh` est idempotent et non interactif. Relancé sans `TOKEN`, il met seulement à jour le binaire et les unités, sans toucher à la configuration.
@@ -49,7 +77,10 @@ L'adresse du hub utilisée dans les commandes est, par ordre de priorité :
 | `ALLOW_INSECURE` | `false` | Accepter un hub en HTTP (liaison non chiffrée) |
 | `AUTO_UPDATE` | `true` | Mise à jour quotidienne depuis les releases GitHub |
 | `SMART` | `true` | Installer smartmontools et la collecte SMART horaire |
-| `REMOTE_UPDATES` | `true` | Autoriser les boutons *Vérifier* et *Mettre à jour* de la page Mises à jour |
+| `REMOTE_UPDATES` | `true` | Autoriser les boutons *Vérifier* et *Mettre à jour* (paquets apt et conteneurs Docker) |
+| `DOCKER` | `auto` | Suivi Docker : activé si `docker` est installé |
+| `LXC` | — | `all` sur un Proxmox : installer aussi dans chaque conteneur LXC Debian démarré |
+| `LXC_TOKEN` | `TOKEN` | Jeton commun `enr_…` utilisé par les conteneurs LXC |
 | `VERSION` | dernière | Installer une release précise (`v0.1.4`) |
 | `REPO` | `midnights-ra1n/homelab-monitoring` | Dépôt hébergeant les releases (fork) |
 
@@ -75,6 +106,10 @@ Cela retire les services, le timer SMART, le binaire, la configuration, l'état 
 | `/usr/local/lib/hlm-agent/apt-action.sh` | `root`, `0755` | Actions apt demandées depuis le tableau de bord (`apt-get update`, `apt-get upgrade`) |
 | `/etc/systemd/system/hlm-agent-apt.{path,service}` | `root` | Lance `apt-action.sh` quand l'agent dépose une demande |
 | `/var/lib/hlm-agent/apt/` | `root:hlm-agent`, `0750` | État et journal de la dernière action apt |
+| `/usr/local/lib/hlm-agent/docker-helper.sh` | `root`, `0755` | Relevé Docker et mise à jour d'un conteneur Compose |
+| `/etc/systemd/system/hlm-agent-docker.{service,timer}` | `root` | Relevé Docker chaque minute, **sans réseau** |
+| `/etc/systemd/system/hlm-agent-docker-update.{path,service}` | `root` | Mise à jour d'un conteneur demandée depuis le tableau de bord |
+| `/var/lib/hlm-agent/docker/` | `root:hlm-agent`, `0750` | Relevé Docker et journal de la dernière mise à jour |
 
 Root n'exécute jamais le binaire de l'agent : l'agent peut le réécrire pour se mettre à jour, ce qui ouvrirait une élévation de privilèges.
 

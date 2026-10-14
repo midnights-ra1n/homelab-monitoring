@@ -6,6 +6,7 @@ import { DiskCard, type HostDisks } from "./Disks";
 import { AddHostWizard, InstallInstructions, UNINSTALL_COMMAND } from "./AddHostWizard";
 import { MassDeployDialog } from "./MassDeploy";
 import { AgentVersion, useHostAction } from "./AgentVersion";
+import { ContainersTable } from "./Containers";
 
 export function HostsPage() {
   const { data, error, refresh } = usePoll(() => api.get<Host[]>("/api/hosts"), 15000);
@@ -77,7 +78,9 @@ export function HostDetailPage({ id }: { id: number }) {
     mem: [{ label: "Mémoire", values: m.mem }, { label: "Swap", values: m.swap }],
     net: [{ label: "Reçu", values: m.net_rx }, { label: "Envoyé", values: m.net_tx }],
     disk: [{ label: "Disque", values: m.disk }],
-    temp: [{ label: "Température max.", values: m.temp }],
+    temp: m.cpu_temp?.some((v) => v != null)
+      ? [{ label: "CPU", values: m.cpu_temp }, { label: "Capteur le plus chaud", values: m.temp }]
+      : [{ label: "Capteur le plus chaud", values: m.temp }],
     load: [{ label: "Charge (1 min)", values: m.load1 }],
   }, [m]);
 
@@ -129,6 +132,7 @@ export function HostDetailPage({ id }: { id: number }) {
             <dt>Processeur</dt><dd>{h.info.cpu_model || "—"}{h.info.cpu_cores ? ` · ${h.info.cpu_cores} cœurs` : ""}</dd>
             <dt>Mémoire</dt><dd>{fmtBytes(h.info.mem_total)}</dd>
             <dt>Démarré le</dt><dd>{h.info.boot_time ? fmtDate(h.info.boot_time) : "—"}</dd>
+            {l.cpu_temp != null && <><dt>Température CPU</dt><dd className="num">{Math.round(l.cpu_temp)} °C</dd></>}
             <dt>Charge</dt><dd className="num">{l.load1?.toFixed(2).replace(".", ",") ?? "—"}</dd>
             <dt>Agent</dt><dd><AgentVersion h={h} onUpdate={() => agentAction.run(h, "update_agent")} updating={agentAction.busy === `${h.id}:update_agent`} />
               {h.action?.action === "update_agent" && h.action.state === "failed" && <div className="xs" style={{ color: "var(--danger-fg)" }}>{h.action.message}</div>}</dd>
@@ -149,6 +153,12 @@ export function HostDetailPage({ id }: { id: number }) {
           <Card title="Température"><Chart t={charts.t} series={charts.temp} format={(v) => `${Math.round(v)} °C`} /></Card>
           <Card title="Charge système"><Chart t={charts.t} series={charts.load} format={(v) => v.toFixed(1).replace(".", ",")} /></Card>
         </div>
+      )}
+
+      {h.docker && (
+        <Card title="Conteneurs Docker" sub={`${h.docker.running} en cours sur ${h.docker.containers.length} · relevé ${fmtAgo(h.docker.collected_at)}`} flush>
+          <ContainersTable h={h} onChanged={host.refresh} />
+        </Card>
       )}
 
       {myDisks && (

@@ -11,6 +11,7 @@ export function updateTotals(hosts: Host[]) {
     pending: reporting.reduce((a, h) => a + (h.updates?.pending ?? 0), 0),
     security: reporting.reduce((a, h) => a + (h.updates?.security ?? 0), 0),
     reboot: reporting.filter((h) => h.updates?.reboot_required).length,
+    images: hosts.reduce((a, h) => a + (h.docker?.updates_available ?? 0), 0),
     upToDate: reporting.filter((h) => !h.updates?.pending).length,
   };
 }
@@ -23,6 +24,7 @@ export function UpdateKpis({ hosts }: { hosts: Host[] }) {
       <Kpi label="Mises à jour de sécurité" value={<span className="num">{t.security}</span>} />
       <Kpi label="Redémarrages requis" value={<span className="num">{t.reboot}</span>} />
       <Kpi label="Hôtes à jour" value={<span className="num">{t.upToDate} / {t.reporting}</span>} />
+      {hosts.some((h) => h.docker) && <Kpi label="Images Docker à mettre à jour" value={<Link to="/containers?filtre=maj" className="num">{t.images}</Link>} />}
     </div>
   );
 }

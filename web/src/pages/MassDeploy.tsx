@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { api, fmtAgo, fmtDate, type Install } from "../api";
-import { Alert, Button, CodeBlock, Dialog, Field, IconButton, Segmented } from "../ui";
+import { Alert, Button, CodeBlock, Dialog, Field, IconButton, Segmented, Switch } from "../ui";
 import { HubUrlField, UNINSTALL_COMMAND, installCommand } from "./AddHostWizard";
 
 interface EnrollToken { id: number; name: string; prefix: string; expires_at: number | null; created_at: number; last_used_at: number; uses: number }
@@ -19,6 +19,7 @@ export function MassDeployDialog({ open, onClose }: { open: boolean; onClose: ()
   const [created, setCreated] = useState<Install>();
   const [hub, setHub] = useState("");
   const [method, setMethod] = useState<"curl" | "ansible">("ansible");
+  const [withLxc, setWithLxc] = useState(false);
   const [error, setError] = useState<string>();
   const load = () => api.get<EnrollToken[]>("/api/enroll-tokens").then(setTokens, () => {});
   useEffect(() => { if (open) load(); }, [open]);
@@ -74,7 +75,8 @@ export function MassDeployDialog({ open, onClose }: { open: boolean; onClose: ()
             ) : (
               <>
                 <p className="small muted">La même ligne fonctionne sur toutes les machines :</p>
-                <CodeBlock text={installCommand(install, { smart: true, autoUpdate: true })} />
+                <Switch label="Sur un Proxmox, installer aussi dans ses conteneurs LXC" checked={withLxc} onChange={setWithLxc} />
+                <CodeBlock text={installCommand(install, { smart: true, autoUpdate: true, lxcToken: withLxc ? install.token : undefined })} />
               </>
             )}
           </>

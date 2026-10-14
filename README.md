@@ -3,7 +3,9 @@
 Supervision légère d'un homelab : un **hub** (Go + SQLite + interface React, livré en conteneur Docker) et un **agent** (binaire Rust statique pour Debian) installé sur chaque machine.
 
 - Hôtes : CPU, mémoire, swap, disques, températures, bande passante, charge, avec historiques.
-- Mises à jour système (Debian / apt) : paquets en attente, mises à jour de sécurité, redémarrage requis, relevés sans privilèges toutes les 6 heures.
+- Mises à jour système (Debian / apt) : paquets en attente, mises à jour de sécurité, redémarrage requis, relevés sans privilèges toutes les 6 heures ; vérification et installation depuis le tableau de bord.
+- Docker : conteneurs (état, healthcheck, CPU, mémoire, réseau), images comparées à leur registre, mise à jour des conteneurs Docker Compose en un clic.
+- Proxmox : installation de l'agent sur l'hôte et dans tous ses conteneurs LXC en une commande ; température CPU des machines physiques.
 - Sondes : HTTP(S) (codes attendus, mot-clé, case « Vérifier le certificat SSL » avec jours restants), port TCP, DNS (type d'enregistrement, serveur, réponse attendue), certificat SSL seul.
 - Avertissement e-mail avant l'expiration d'un certificat (délai réglable par sonde, par exemple 3 jours), envoyé une seule fois par certificat.
 - États façon Statuspage : opérationnel, performances dégradées, maintenance, panne partielle, panne majeure.
@@ -92,7 +94,7 @@ Le workflow [`release.yml`](.github/workflows/release.yml) s'exécute **uniqueme
 
 Prévu dans les prochaines étapes (voir AGENTS.md) :
 
-- Agent : services systemd, programmation des mises à jour et des redémarrages, Docker (conteneurs, ressources, mises à jour d'images), surveillance CVE.
+- Agent : services systemd, programmation des mises à jour et des redémarrages, surveillance CVE ; historique des ressources par conteneur.
 - Serveur MCP activable pour interroger le monitoring depuis Claude.
 - Passkeys (uniquement en HTTPS derrière un reverse proxy).
 - Éditeur graphique pour le modèle d'e-mail, widgets supplémentaires pour le tableau de bord et la page de statut.

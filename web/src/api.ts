@@ -15,7 +15,7 @@ export interface HostInfo {
 }
 export interface HostLatest {
   cpu?: number; mem_used?: number; mem_total?: number; swap_used?: number; swap_total?: number;
-  disk_used?: number; disk_total?: number; net_rx?: number; net_tx?: number; load1?: number; temp?: number | null;
+  disk_used?: number; disk_total?: number; net_rx?: number; net_tx?: number; load1?: number; temp?: number | null; cpu_temp?: number | null;
   disks?: { mount: string; fs: string; used: number; total: number }[];
   temps?: { label: string; c: number }[];
   ifaces?: { name: string; rx: number; tx: number }[];
@@ -28,10 +28,17 @@ export interface HostUpdates {
 export interface Host {
   id: number; name: string; status: Status; last_seen: number; maintenance: boolean; public: boolean;
   connected: boolean; info: HostInfo; latest: HostLatest; updates: HostUpdates | null; created_at: number;
-  action: HostAction | null; agent_latest: string; agent_outdated: boolean;
+  action: HostAction | null; agent_latest: string; agent_outdated: boolean; docker: DockerSnapshot | null;
 }
-export type HostActionName = "check_updates" | "apply_updates" | "update_agent";
-export interface HostAction { action: HostActionName; state: "pending" | "running" | "done" | "failed"; message: string; at: number }
+export type ImageUpdate = "up_to_date" | "available" | "unknown" | "local" | "pinned";
+export interface DockerContainer {
+  id: string; name: string; image: string; state: string; health: string; started_at: string; restart_count: number;
+  cpu_pct: number | null; mem_used: number | null; mem_limit: number | null; net_rx: number | null; net_tx: number | null;
+  compose_project: string; compose_service: string; update: ImageUpdate;
+}
+export interface DockerSnapshot { containers: DockerContainer[]; error?: string; collected_at: number; running: number; updates_available: number }
+export type HostActionName = "check_updates" | "apply_updates" | "update_agent" | "update_container";
+export interface HostAction { action: HostActionName; target?: string; state: "pending" | "running" | "done" | "failed"; message: string; at: number }
 export const actionBusy = (h: Host) => !!h.action && (h.action.state === "pending" || h.action.state === "running") && Date.now() / 1000 - h.action.at < 7200;
 export interface Install { hub_url: string; key: string; token: string; command: string }
 
@@ -56,7 +63,7 @@ export type MonitorInput = Pick<Monitor, "name" | "type" | "target" | "interval_
 
 export interface Series { t: number[]; latency: (number | null)[]; worst: Status[]; name?: string }
 export interface Overview { status: Status; hosts: Host[]; monitors: Monitor[]; latency: Series[] }
-export type HostSeries = Record<"t" | "cpu" | "mem" | "swap" | "disk" | "net_rx" | "net_tx" | "load1" | "temp", (number | null)[]>;
+export type HostSeries = Record<"t" | "cpu" | "mem" | "swap" | "disk" | "net_rx" | "net_tx" | "load1" | "temp" | "cpu_temp", (number | null)[]>;
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }

@@ -146,7 +146,10 @@ Le dépôt fournit aussi un playbook prêt à l'emploi : `ansible-playbook deplo
 | `hlm_version` | `latest` | `latest` ou une release (`v0.1.4`) |
 | `hlm_auto_update` | `true` avec `latest` | Mise à jour quotidienne par l'agent lui-même |
 | `hlm_smart` | `false` sur VM et conteneur | Collecte SMART (installe smartmontools) |
-| `hlm_remote_updates` | `true` | Boutons *Vérifier* / *Mettre à jour* du tableau de bord (helper root, actions apt fixes) |
+| `hlm_remote_updates` | `true` | Boutons *Vérifier* / *Mettre à jour* du tableau de bord (helper root, actions apt et Docker fixes) |
+| `hlm_docker` | `auto` | Suivi Docker : `auto` (si docker est installé), `true` ou `false` |
+
+Conteneurs LXC d'un Proxmox : ajoutez-les simplement à votre inventaire (Ansible s'y connecte en SSH comme à n'importe quelle machine), ou utilisez la commande `LXC=all` de l'assistant, qui les équipe depuis le Proxmox sans SSH.
 | `hlm_allow_insecure` | `true` si `http://` | Accepter un hub en HTTP |
 | `hlm_repo` | `midnights-ra1n/homelab-monitoring` | Dépôt des releases |
 

@@ -57,6 +57,7 @@ En HTTP (sans reverse proxy HTTPS), le jeton circule en clair : réservez cet us
 | `monitors:read` | `GET /api/v1/monitors`, `GET /api/v1/monitors/{id}`, `GET /api/v1/monitors/{id}/results` |
 | `updates:read` | `GET /api/v1/updates` |
 | `smart:read` | `GET /api/v1/disks` |
+| `docker:read` | `GET /api/v1/containers` |
 | `reports:read` | `GET /api/v1/reports/monthly` |
 | `maintenance:write` | `PUT /api/v1/hosts/{id}/maintenance`, `PUT /api/v1/monitors/{id}/maintenance` |
 
@@ -378,6 +379,41 @@ Scope `smart:read`. Santé SMART des disques, par hôte. Les hôtes sans collect
 | `error` | présent si `smartctl` est absent de l'hôte |
 
 Les champs SMART bruts valent `null` quand le disque ne les expose pas (les machines virtuelles n'en exposent généralement aucun).
+
+### `GET /api/v1/containers`
+
+Scope `docker:read`. Conteneurs Docker par hôte (hôtes avec Docker uniquement), relevés toutes les minutes.
+
+```json
+[
+  {
+    "host_id": 4,
+    "host": "docker-01",
+    "docker": {
+      "collected_at": 1792046220,
+      "running": 4,
+      "updates_available": 1,
+      "containers": [
+        {
+          "id": "a1b2c3d4e5f6", "name": "nextcloud-app-1", "image": "nextcloud:29-apache",
+          "state": "running", "health": "healthy", "started_at": "2026-10-12T08:01:12.5Z", "restart_count": 0,
+          "cpu_pct": 3.2, "mem_used": 440401920, "mem_limit": 8589934592, "net_rx": 900000000, "net_tx": 300000000,
+          "compose_project": "nextcloud", "compose_service": "app", "update": "available"
+        }
+      ]
+    }
+  }
+]
+```
+
+| Champ | Remarque |
+|---|---|
+| `state` | `running`, `exited`, `restarting`, `paused`, `created`, `dead` |
+| `health` | `healthy`, `unhealthy`, `starting`, ou vide sans healthcheck |
+| `mem_*`, `net_*` | octets ; `net_*` cumulés depuis le démarrage du conteneur ; `null` si arrêté |
+| `update` | `available`, `up_to_date`, `unknown` (registre privé ou injoignable), `local` (image construite sur place), `pinned` (référencée par empreinte) |
+| `compose_*` | vides hors Docker Compose |
+| `error` | présent si Docker n'a pas répondu |
 
 ### `GET /api/v1/reports/monthly?month=2026-09`
 

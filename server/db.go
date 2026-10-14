@@ -104,6 +104,8 @@ var migrations = []string{
 		last_used_at INTEGER NOT NULL DEFAULT 0,
 		uses INTEGER NOT NULL DEFAULT 0);`,
 	`ALTER TABLE hosts ADD COLUMN action TEXT NOT NULL DEFAULT '{}';`,
+	`ALTER TABLE host_metrics ADD COLUMN cpu_temp REAL;
+	ALTER TABLE hosts ADD COLUMN docker TEXT NOT NULL DEFAULT '{}';`,
 }
 
 func openDB(dir string) (*sql.DB, error) {

@@ -15,13 +15,25 @@ import (
 	"github.com/coder/websocket/wsjson"
 )
 
-var hostActions = map[string]bool{"check_updates": true, "apply_updates": true, "update_agent": true}
+var hostActions = map[string]bool{"check_updates": true, "apply_updates": true, "update_agent": true, "update_container": true}
 
 func (s *Server) setHostAction(id int64, action, state, message string) {
+	s.setHostActionTarget(id, action, "", state, message)
+}
+
+// setHostActionTarget records an action; an empty target keeps the one of the same running action.
+func (s *Server) setHostActionTarget(id int64, action, target, state, message string) {
 	if len(message) > 4000 {
 		message = message[len(message)-4000:]
 	}
-	b, _ := json.Marshal(hostAction{Action: action, State: state, Message: message, At: time.Now().Unix()})
+	if target == "" {
+		var raw string
+		var prev hostAction
+		if s.db.QueryRow(`SELECT action FROM hosts WHERE id=?`, id).Scan(&raw) == nil && json.Unmarshal([]byte(raw), &prev) == nil && prev.Action == action {
+			target = prev.Target
+		}
+	}
+	b, _ := json.Marshal(hostAction{Action: action, Target: target, State: state, Message: message, At: time.Now().Unix()})
 	if _, err := s.db.Exec(`UPDATE hosts SET action=? WHERE id=?`, string(b), id); err != nil {
 		slog.Error("store host action", "err", err)
 	}
@@ -34,12 +46,17 @@ func (s *Server) handleHostAction(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Action string `json:"action"`
+		Target string `json:"target"`
 	}
 	if !readJSON(w, r, &req) {
 		return
 	}
 	if !hostActions[req.Action] {
-		writeErr(w, 400, "Action inconnue : check_updates, apply_updates ou update_agent")
+		writeErr(w, 400, "Action inconnue : check_updates, apply_updates, update_agent ou update_container")
+		return
+	}
+	if req.Action == "update_container" && (req.Target == "" || len(req.Target) > 200 || strings.Trim(req.Target, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-") != "") {
+		writeErr(w, 400, "Nom de conteneur invalide")
 		return
 	}
 	hosts, err := s.loadHosts("WHERE id=?", id)
@@ -65,11 +82,11 @@ func (s *Server) handleHostAction(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(conn.ctx, 10*time.Second)
 	defer cancel()
-	if err := wsjson.Write(ctx, conn.conn, map[string]string{"type": "action", "action": req.Action}); err != nil {
+	if err := wsjson.Write(ctx, conn.conn, map[string]string{"type": "action", "action": req.Action, "target": req.Target}); err != nil {
 		writeErr(w, 502, "Impossible de joindre l'agent : "+err.Error())
 		return
 	}
-	s.setHostAction(id, req.Action, "pending", "")
+	s.setHostActionTarget(id, req.Action, req.Target, "pending", "")
 	s.handleGetHost(w, r)
 }
 

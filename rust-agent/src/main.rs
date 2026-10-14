@@ -6,6 +6,7 @@
 
 mod actions;
 mod collect;
+mod docker;
 mod smart;
 mod update;
 mod updates;
@@ -174,9 +175,15 @@ async fn session(cfg: &Config, token: &str, collector: &mut collect::Collector) 
     // Pending updates change slowly; apt-daily refreshes the lists about twice a day.
     // The first check waits a minute so the agent itself starts instantly and cheaply.
     let mut upd = tokio::time::interval_at(tokio::time::Instant::now() + Duration::from_secs(60), Duration::from_secs(6 * 3600));
-    // apt action requested from the dashboard and still running: (action, requested at).
-    let mut apt_pending: Option<(String, u64)> = None;
+    // Dashboard action still running in a root helper: (action, requested at, helper output).
+    let mut apt_pending: Option<(String, u64, (&str, &str))> = None;
     let mut apt_poll = tokio::time::interval(Duration::from_secs(5));
+    // Docker: the root helper refreshes the snapshot every minute; image updates are checked
+    // against the registries two minutes after start, then every 6 hours.
+    let mut docker_tick = tokio::time::interval(Duration::from_secs(20));
+    let mut docker_sent = 0u64;
+    let mut image_cache = docker::UpdateCache::new();
+    let mut registry_tick = tokio::time::interval_at(tokio::time::Instant::now() + Duration::from_secs(120), Duration::from_secs(6 * 3600));
     // The root collector refreshes SMART hourly; forward each new file once.
     let mut smart_tick = tokio::time::interval(Duration::from_secs(600));
     let mut smart_sent = 0u64;
@@ -205,9 +212,30 @@ async fn session(cfg: &Config, token: &str, collector: &mut collect::Collector) 
                     return Failure::Retry(e.to_string());
                 }
             }
+            _ = docker_tick.tick() => {
+                if let Some(mut snap) = docker::read_snapshot().filter(|s| s.collected_at != docker_sent) {
+                    docker_sent = snap.collected_at;
+                    snap.apply(&image_cache);
+                    let m = serde_json::json!({"type": "docker", "docker": snap});
+                    if let Err(e) = ws.send(Message::Text(m.to_string().into())).await {
+                        return Failure::Retry(e.to_string());
+                    }
+                }
+            }
+            _ = registry_tick.tick() => {
+                if let Some(snap) = docker::read_snapshot() {
+                    let images = snap.images();
+                    if !images.is_empty() {
+                        if let Ok(c) = tokio::task::spawn_blocking(move || docker::check_updates(images)).await {
+                            image_cache = c;
+                            docker_sent = 0; // resend with the new statuses
+                        }
+                    }
+                }
+            }
             _ = apt_poll.tick(), if apt_pending.is_some() => {
-                let (action, since) = apt_pending.clone().unwrap();
-                let finished = actions::apt_result(since)
+                let (action, since, output) = apt_pending.clone().unwrap();
+                let finished = actions::helper_result(output, since)
                     .or_else(|| (actions::now() > since + 7200).then(|| (false, "Aucune réponse après 2 heures".to_string())));
                 if let Some((ok, message)) = finished {
                     apt_pending = None;
@@ -215,7 +243,11 @@ async fn session(cfg: &Config, token: &str, collector: &mut collect::Collector) 
                     if let Err(e) = ws.send(Message::Text(r.to_string().into())).await {
                         return Failure::Retry(e.to_string());
                     }
-                    upd.reset_immediately(); // report the new package list right away
+                    if action == "update_container" {
+                        registry_tick.reset_immediately(); // re-check images now that one changed
+                    } else {
+                        upd.reset_immediately(); // report the new package list right away
+                    }
                 }
             }
             msg = ws.next() => match msg {
@@ -229,10 +261,14 @@ async fn session(cfg: &Config, token: &str, collector: &mut collect::Collector) 
                         "check_updates" | "apply_updates" => {
                             let kind = if action == "check_updates" { "refresh" } else { "upgrade" };
                             match actions::request_apt(kind) {
-                                Ok(()) => { apt_pending = Some((action.clone(), actions::now())); ("running", String::new()) }
+                                Ok(()) => { apt_pending = Some((action.clone(), actions::now(), actions::APT_OUTPUT)); ("running", String::new()) }
                                 Err(e) => ("failed", e),
                             }
                         }
+                        "update_container" => match actions::request_container_update(m["target"].as_str().unwrap_or("")) {
+                            Ok(()) => { apt_pending = Some((action.clone(), actions::now(), actions::DOCKER_OUTPUT)); ("running", String::new()) }
+                            Err(e) => ("failed", e),
+                        },
                         "update_agent" => {
                             let repo = cfg.repo.clone();
                             match tokio::task::spawn_blocking(move || update::check(&repo)).await {

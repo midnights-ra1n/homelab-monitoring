@@ -1,0 +1,11 @@
+[Unit]
+Description=Homelab monitoring agent: update a Docker Compose container
+Documentation=https://github.com/midnights-ra1n/homelab-monitoring
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+# Root-owned helper: one container name, Compose containers only; see docker-helper.sh.
+ExecStart=/usr/local/lib/hlm-agent/docker-helper.sh update
+TimeoutStartSec=30min
+Nice=10

@@ -11,7 +11,7 @@ const KINDS: { id: Kind; label: string; hint: string; icon: typeof Server; smart
   { id: "client", label: "Poste client", hint: "Ordinateur sous Debian", icon: Laptop, smart: true },
 ];
 
-export interface InstallOptions { smart: boolean; autoUpdate: boolean }
+export interface InstallOptions { smart: boolean; autoUpdate: boolean; lxcToken?: string }
 
 const REPO = "midnights-ra1n/homelab-monitoring";
 
@@ -45,6 +45,7 @@ export function installCommand(i: Install, o: InstallOptions) {
   if (i.hub_url.startsWith("http://")) env.push("ALLOW_INSECURE=true");
   if (!o.smart) env.push("SMART=false");
   if (!o.autoUpdate) env.push("AUTO_UPDATE=false");
+  if (o.lxcToken) env.push("LXC=all", `LXC_TOKEN='${o.lxcToken}'`);
   return `curl -fsSL https://raw.githubusercontent.com/${REPO}/stable/rust-agent/install.sh | sudo ${env.join(" ")} sh`;
 }
 
@@ -80,6 +81,9 @@ export function InstallInstructions({ install: initial, name, options = { smart:
       {method === "curl" && (
         <>
           <p className="small muted">Collez cette ligne dans un terminal de la machine (Debian, avec sudo). Le script télécharge le binaire, vérifie son empreinte SHA-256, crée l'utilisateur hlm-agent et démarre le service.</p>
+          {options.lxcToken && (
+            <Alert tone="info" title="Conteneurs LXC inclus">Après le Proxmox, le script installe l'agent dans chaque conteneur Debian démarré (copie par pct push, sans accès Internet nécessaire dans les conteneurs). Chacun apparaît sous son nom. Relancez la même ligne pour équiper les conteneurs créés plus tard ; le jeton commun est valable 7 jours.</Alert>
+          )}
           <CodeBlock text={installCommand(install, options)} />
         </>
       )}
@@ -125,13 +129,14 @@ export function AddHostWizard({ open, onClose }: { open: boolean; onClose: () =>
   const [name, setName] = useState("");
   const [kind, setKind] = useState<Kind>("vm");
   const [opts, setOpts] = useState<InstallOptions>({ smart: false, autoUpdate: true });
+  const [lxc, setLxc] = useState(true);
   const [created, setCreated] = useState<{ id: number; install: Install }>();
   const [host, setHost] = useState<Host>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
 
   const close = () => {
-    setStep(0); setName(""); setKind("vm"); setOpts({ smart: false, autoUpdate: true });
+    setStep(0); setName(""); setKind("vm"); setOpts({ smart: false, autoUpdate: true }); setLxc(true);
     setCreated(undefined); setHost(undefined); setError(undefined);
     onClose();
   };
@@ -153,6 +158,13 @@ export function AddHostWizard({ open, onClose }: { open: boolean; onClose: () =>
     setError(undefined);
     try {
       const r = await api.post<{ id: number; install: Install }>("/api/hosts", { name });
+      if (kind === "proxmox" && lxc) {
+        // LXC containers enroll themselves with a shared token, one host each.
+        const e = await api.post<{ install: Install }>("/api/enroll-tokens", { name: `LXC de ${name}`, expires_at: Math.floor(Date.now() / 1000) + 7 * 86400 });
+        setOpts((o) => ({ ...o, lxcToken: e.install.token }));
+      } else {
+        setOpts((o) => ({ ...o, lxcToken: undefined }));
+      }
       setCreated(r);
       setStep(1);
     } catch (err) { setError((err as Error).message); }
@@ -199,6 +211,9 @@ export function AddHostWizard({ open, onClose }: { open: boolean; onClose: () =>
           </fieldset>
           <Switch label="Surveiller les disques (SMART, installe smartmontools)" checked={opts.smart} onChange={(v) => setOpts({ ...opts, smart: v })} />
           <Switch label="Mise à jour automatique quotidienne de l'agent" checked={opts.autoUpdate} onChange={(v) => setOpts({ ...opts, autoUpdate: v })} />
+          {kind === "proxmox" && (
+            <Switch label="Installer aussi dans les conteneurs LXC Debian démarrés" checked={lxc} onChange={setLxc} />
+          )}
         </form>
       )}
       {step === 1 && created && <InstallInstructions install={created.install} name={name} options={opts} />}

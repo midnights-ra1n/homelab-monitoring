@@ -7,12 +7,15 @@ import { Button, useToast } from "../ui";
 export function useHostAction(onDone?: (h: Host) => void) {
   const toast = useToast();
   const [busy, setBusy] = useState<string>();
-  const run = async (h: Host, action: HostActionName) => {
-    setBusy(`${h.id}:${action}`);
+  const run = async (h: Host, action: HostActionName, target?: string) => {
+    setBusy(`${h.id}:${action}${target ? ":" + target : ""}`);
     try {
-      const updated = await api.post<Host>(`/api/hosts/${h.id}/action`, { action });
+      const updated = await api.post<Host>(`/api/hosts/${h.id}/action`, { action, target });
       onDone?.(updated);
-      toast(action === "update_agent" ? `Mise à jour de l'agent demandée sur ${h.name}` : action === "apply_updates" ? `Installation des mises à jour lancée sur ${h.name}` : `Vérification lancée sur ${h.name}`);
+      toast(action === "update_agent" ? `Mise à jour de l'agent demandée sur ${h.name}`
+        : action === "apply_updates" ? `Installation des mises à jour lancée sur ${h.name}`
+        : action === "update_container" ? `Mise à jour de ${target} lancée sur ${h.name}`
+        : `Vérification lancée sur ${h.name}`);
     } catch (e) {
       toast(`${h.name} : ${(e as Error).message}`);
     } finally {

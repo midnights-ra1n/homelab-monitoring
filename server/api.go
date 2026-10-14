@@ -24,6 +24,7 @@ var apiScopes = map[string]string{
 	"monitors:read":     "Sondes, disponibilité et latence",
 	"updates:read":      "Mises à jour en attente",
 	"smart:read":        "Santé des disques (SMART)",
+	"docker:read":       "Conteneurs Docker et mises à jour d'images",
 	"reports:read":      "Rapports mensuels",
 	"maintenance:write": "Activer ou désactiver la maintenance d'un hôte ou d'une sonde",
 }
@@ -62,6 +63,7 @@ func (s *Server) apiRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v1/monitors/{id}/maintenance", t("maintenance:write", s.apiMonitorMaintenance))
 	mux.HandleFunc("GET /api/v1/updates", t("updates:read", s.apiUpdates))
 	mux.HandleFunc("GET /api/v1/disks", t("smart:read", s.handleDisks))
+	mux.HandleFunc("GET /api/v1/containers", t("docker:read", s.handleContainers))
 	mux.HandleFunc("GET /api/v1/reports/monthly", t("reports:read", s.handleMonthlyReport))
 	mux.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) { writeErr(w, 404, "Route inconnue") })
 

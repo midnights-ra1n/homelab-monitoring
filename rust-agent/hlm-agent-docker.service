@@ -1,0 +1,28 @@
+[Unit]
+Description=Homelab monitoring agent: Docker containers snapshot
+Documentation=https://github.com/midnights-ra1n/homelab-monitoring
+After=docker.service
+
+[Service]
+Type=oneshot
+# Root only to read the Docker socket; no network, nothing writable but its output directory.
+ExecStart=/usr/local/lib/hlm-agent/docker-helper.sh collect
+PrivateNetwork=yes
+IPAddressDeny=any
+RestrictAddressFamilies=AF_UNIX
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/hlm-agent
+ProtectHome=read-only
+PrivateTmp=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE
+UMask=0027
+Nice=10
+TimeoutStartSec=50s

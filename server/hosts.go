@@ -60,6 +60,7 @@ type agentMetrics struct {
 	NetTx     float64      `json:"net_tx"`
 	Load1     float64      `json:"load1"`
 	Temp      *float64     `json:"temp"`
+	CPUTemp   *float64     `json:"cpu_temp"`
 	Disks     []agentDisk  `json:"disks"`
 	Temps     []agentTemp  `json:"temps"`
 	Ifaces    []agentIface `json:"ifaces"`
@@ -84,11 +85,12 @@ type agentUpdates struct {
 }
 
 type agentMsg struct {
-	Type    string        `json:"type"`
-	Info    *agentInfo    `json:"info,omitempty"`
-	Metrics *agentMetrics `json:"metrics,omitempty"`
-	Updates *agentUpdates `json:"updates,omitempty"`
-	Smart   *smartReport  `json:"smart,omitempty"`
+	Type    string          `json:"type"`
+	Info    *agentInfo      `json:"info,omitempty"`
+	Metrics *agentMetrics   `json:"metrics,omitempty"`
+	Updates *agentUpdates   `json:"updates,omitempty"`
+	Smart   *smartReport    `json:"smart,omitempty"`
+	Docker  *dockerSnapshot `json:"docker,omitempty"`
 	// action_result fields
 	Action  string `json:"action,omitempty"`
 	State   string `json:"state,omitempty"`
@@ -112,14 +114,16 @@ type Host struct {
 	Latest      json.RawMessage `json:"latest"`
 	Updates     *agentUpdates   `json:"updates"`
 	Action      *hostAction     `json:"action"`         // last dashboard action (updates, agent update)
+	Docker      *dockerSnapshot `json:"docker"`         // nil when the host has no Docker
 	AgentLatest string          `json:"agent_latest"`   // latest published agent release, "" if unknown
 	Outdated    bool            `json:"agent_outdated"` // agent older than AgentLatest
 	CreatedAt   int64           `json:"created_at"`
 }
 
 type hostAction struct {
-	Action  string `json:"action"` // check_updates, apply_updates, update_agent
-	State   string `json:"state"`  // pending, running, done, failed
+	Action  string `json:"action"`           // check_updates, apply_updates, update_agent, update_container
+	Target  string `json:"target,omitempty"` // container name for update_container
+	State   string `json:"state"`            // pending, running, done, failed
 	Message string `json:"message"`
 	At      int64  `json:"at"`
 }
@@ -171,7 +175,7 @@ func (s *Server) hostStatus(h *Host) string {
 }
 
 func (s *Server) loadHosts(where string, args ...any) ([]Host, error) {
-	rows, err := s.db.Query(`SELECT id,name,last_seen,maintenance,public,info,latest,updates,action,created_at FROM hosts `+where+` ORDER BY name COLLATE NOCASE`, args...)
+	rows, err := s.db.Query(`SELECT id,name,last_seen,maintenance,public,info,latest,updates,action,docker,created_at FROM hosts `+where+` ORDER BY name COLLATE NOCASE`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -179,8 +183,8 @@ func (s *Server) loadHosts(where string, args ...any) ([]Host, error) {
 	hosts := []Host{}
 	for rows.Next() {
 		var h Host
-		var info, latest, updates, action string
-		if err := rows.Scan(&h.ID, &h.Name, &h.LastSeen, &h.Maintenance, &h.Public, &info, &latest, &updates, &action, &h.CreatedAt); err != nil {
+		var info, latest, updates, action, docker string
+		if err := rows.Scan(&h.ID, &h.Name, &h.LastSeen, &h.Maintenance, &h.Public, &info, &latest, &updates, &action, &docker, &h.CreatedAt); err != nil {
 			return nil, err
 		}
 		h.Info, h.Latest = json.RawMessage(info), json.RawMessage(latest)
@@ -191,6 +195,10 @@ func (s *Server) loadHosts(where string, args ...any) ([]Host, error) {
 		var a hostAction
 		if json.Unmarshal([]byte(action), &a) == nil && a.Action != "" {
 			h.Action = &a
+		}
+		var d dockerSnapshot
+		if json.Unmarshal([]byte(docker), &d) == nil && d.CollectedAt > 0 {
+			h.Docker = &d
 		}
 		var ai agentInfo
 		json.Unmarshal(h.Info, &ai)
@@ -377,7 +385,7 @@ func (s *Server) handleHostMetrics(w http.ResponseWriter, r *http.Request) {
 		AVG(CASE WHEN mem_total>0 THEN mem_used*100.0/mem_total END),
 		AVG(CASE WHEN swap_total>0 THEN swap_used*100.0/swap_total END),
 		AVG(CASE WHEN disk_total>0 THEN disk_used*100.0/disk_total END),
-		AVG(net_rx), AVG(net_tx), AVG(load1), MAX(temp)
+		AVG(net_rx), AVG(net_tx), AVG(load1), MAX(temp), MAX(cpu_temp)
 		FROM host_metrics WHERE host_id=?2 AND ts>=?3 GROUP BY t ORDER BY t`,
 		bucket, id, time.Now().Add(-d).Unix())
 	if err != nil {
@@ -386,13 +394,13 @@ func (s *Server) handleHostMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 	type point struct {
-		T                                     int64
-		CPU, Mem, Swap, Disk, Rx, Tx, L, Temp *float64
+		T                                              int64
+		CPU, Mem, Swap, Disk, Rx, Tx, L, Temp, CPUTemp *float64
 	}
-	out := map[string][]any{"t": {}, "cpu": {}, "mem": {}, "swap": {}, "disk": {}, "net_rx": {}, "net_tx": {}, "load1": {}, "temp": {}}
+	out := map[string][]any{"t": {}, "cpu": {}, "mem": {}, "swap": {}, "disk": {}, "net_rx": {}, "net_tx": {}, "load1": {}, "temp": {}, "cpu_temp": {}}
 	for rows.Next() {
 		var p point
-		if err := rows.Scan(&p.T, &p.CPU, &p.Mem, &p.Swap, &p.Disk, &p.Rx, &p.Tx, &p.L, &p.Temp); err != nil {
+		if err := rows.Scan(&p.T, &p.CPU, &p.Mem, &p.Swap, &p.Disk, &p.Rx, &p.Tx, &p.L, &p.Temp, &p.CPUTemp); err != nil {
 			serverErr(w, err)
 			return
 		}
@@ -405,6 +413,7 @@ func (s *Server) handleHostMetrics(w http.ResponseWriter, r *http.Request) {
 		out["net_tx"] = append(out["net_tx"], p.Tx)
 		out["load1"] = append(out["load1"], p.L)
 		out["temp"] = append(out["temp"], p.Temp)
+		out["cpu_temp"] = append(out["cpu_temp"], p.CPUTemp)
 	}
 	if err := rows.Err(); err != nil {
 		serverErr(w, err)
@@ -506,6 +515,10 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 			}
 		case m.Type == "action_result" && hostActions[m.Action] && (m.State == "running" || m.State == "done" || m.State == "failed"):
 			s.setHostAction(id, m.Action, m.State, m.Message)
+		case m.Type == "docker" && m.Docker != nil:
+			if err := s.storeDocker(id, m.Docker); err != nil {
+				slog.Error("store docker", "err", err)
+			}
 		case m.Type == "smart" && m.Smart != nil:
 			if err := s.storeSmart(id, hostName, m.Smart); err != nil {
 				slog.Error("store smart", "err", err)
@@ -563,8 +576,8 @@ func (s *Server) storeMetrics(id int64, m *agentMetrics) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`INSERT OR REPLACE INTO host_metrics(host_id,ts,cpu,mem_used,mem_total,swap_used,swap_total,disk_used,disk_total,net_rx,net_tx,load1,temp)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, now, m.CPU, m.MemUsed, m.MemTotal, m.SwapUsed, m.SwapTotal, m.DiskUsed, m.DiskTotal, m.NetRx, m.NetTx, m.Load1, m.Temp); err != nil {
+	if _, err := tx.Exec(`INSERT OR REPLACE INTO host_metrics(host_id,ts,cpu,mem_used,mem_total,swap_used,swap_total,disk_used,disk_total,net_rx,net_tx,load1,temp,cpu_temp)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, now, m.CPU, m.MemUsed, m.MemTotal, m.SwapUsed, m.SwapTotal, m.DiskUsed, m.DiskTotal, m.NetRx, m.NetTx, m.Load1, m.Temp, m.CPUTemp); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`UPDATE hosts SET latest=?, last_seen=? WHERE id=?`, string(latest), now, id); err != nil {

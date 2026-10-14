@@ -53,6 +53,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/import", auth(s.handleImport))
 
 	mux.HandleFunc("GET /api/disks", auth(s.handleDisks))
+	mux.HandleFunc("GET /api/containers", auth(s.handleContainers))
 	mux.HandleFunc("GET /api/reports/monthly", auth(s.handleMonthlyReport))
 	mux.HandleFunc("POST /api/reports/monthly/send", auth(s.handleSendMonthlyReport))
 	mux.HandleFunc("GET /api/status/layout", auth(s.handleGetStatusLayout))

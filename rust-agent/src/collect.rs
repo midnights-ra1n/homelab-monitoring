@@ -56,6 +56,7 @@ pub struct Metrics {
     net_tx: f64,
     load1: f64,
     temp: Option<f32>,
+    cpu_temp: Option<f32>,
     disks: Vec<Disk>,
     temps: Vec<Temp>,
     ifaces: Vec<Iface>,
@@ -79,6 +80,35 @@ const VIRTUAL_IFACES: &[&str] = &[
     "lo", "veth", "docker", "br-", "virbr", "vmbr", "tap", "fwbr", "fwpr", "fwln", "tun", "wg",
     "cni", "flannel", "cali", "vnet",
 ];
+
+/// CPU temperature from the sensor that best represents the package, by driver label:
+/// AMD (k10temp Tctl/Tdie, zenpower), Intel (coretemp Package id 0), ARM SoCs (cpu_thermal),
+/// falling back to the hottest Intel core. Virtual machines expose none.
+fn cpu_temp(temps: &[Temp]) -> Option<f32> {
+    const PREFERRED: &[&str] = &["tctl", "tdie", "package id 0", "cpu_thermal", "soc_thermal", "cpu temp", "zenpower", "k10temp", "cpu"];
+    let lower: Vec<(String, f32)> = temps.iter().map(|t| (t.label.to_lowercase(), t.c)).collect();
+    PREFERRED
+        .iter()
+        .find_map(|p| lower.iter().find(|(l, _)| l.contains(p)).map(|(_, c)| *c))
+        .or_else(|| lower.iter().filter(|(l, _)| l.starts_with("coretemp core")).map(|(_, c)| *c).reduce(f32::max))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn t(label: &str, c: f32) -> Temp {
+        Temp { label: label.into(), c }
+    }
+
+    #[test]
+    fn picks_the_cpu_sensor() {
+        assert_eq!(cpu_temp(&[t("nvme Composite", 61.0), t("k10temp Tctl", 48.5)]), Some(48.5));
+        assert_eq!(cpu_temp(&[t("coretemp Core 0", 50.0), t("coretemp Package id 0", 55.0)]), Some(55.0));
+        assert_eq!(cpu_temp(&[t("coretemp Core 0", 50.0), t("coretemp Core 1", 53.0)]), Some(53.0));
+        assert_eq!(cpu_temp(&[t("cpu_thermal temp1", 45.0)]), Some(45.0));
+        assert_eq!(cpu_temp(&[t("nvme Composite", 40.0), t("acpitz temp1", 27.8)]), None);
+    }
+}
 
 impl Collector {
     pub fn new() -> Self {
@@ -175,6 +205,7 @@ impl Collector {
             net_tx: tx,
             load1: System::load_average().one,
             temp: temps.iter().map(|t| t.c).reduce(f32::max),
+            cpu_temp: cpu_temp(&temps),
             disks,
             temps,
             ifaces,

@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Activity, FileBarChart, HardDrive, LayoutDashboard, LogOut, Menu, Moon, PackageCheck, PanelsTopLeft, Radar, Server, Settings as SettingsIcon, Sun, Globe } from "lucide-react";
+import { Activity, Container, FileBarChart, HardDrive, LayoutDashboard, LogOut, Menu, Moon, PackageCheck, PanelsTopLeft, Radar, Server, Settings as SettingsIcon, Sun, Globe } from "lucide-react";
 import "./styles.css";
 import { api } from "./api";
 import { IconButton, Link, ToastProvider, navigate, usePath, useTheme } from "./ui";
@@ -12,6 +12,7 @@ import { SettingsPage } from "./pages/Settings";
 import { UpdatesPage } from "./pages/Updates";
 import { PublicStatusPage, StatusEditorPage } from "./pages/PublicStatus";
 import { DisksPage } from "./pages/Disks";
+import { ContainersPage } from "./pages/Containers";
 import { ReportsPage } from "./pages/Reports";
 
 interface AuthState { setup_required: boolean; authenticated: boolean; username: string; version: string; dev_mode: boolean }
@@ -48,6 +49,7 @@ function App() {
   else if (seg[0] === "monitors") page = <MonitorsPage />;
   else if (seg[0] === "updates") page = <UpdatesPage />;
   else if (seg[0] === "disks") page = <DisksPage />;
+  else if (seg[0] === "containers") page = <ContainersPage />;
   else if (seg[0] === "reports") page = <ReportsPage />;
   else if (seg[0] === "status-page") page = <StatusEditorPage />;
   else if (seg[0] === "settings") page = <SettingsPage theme={theme} />;
@@ -58,6 +60,7 @@ function App() {
     ["/hosts", "Hôtes", Server],
     ["/monitors", "Sondes", Radar],
     ["/updates", "Mises à jour", PackageCheck],
+    ["/containers", "Conteneurs", Container],
     ["/disks", "Disques", HardDrive],
     ["/reports", "Rapports", FileBarChart],
     ["/status-page", "Page de statut", PanelsTopLeft],

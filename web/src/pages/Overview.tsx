@@ -206,7 +206,7 @@ function WidgetView({ id, data }: { id: WidgetId; data: Overview }) {
                       <td className="r">{fmtPct(h.latest.cpu)}</td>
                       <td className="r">{fmtPct(pct(h.latest.mem_used, h.latest.mem_total))}</td>
                       <td className="r">{fmtPct(pct(h.latest.disk_used, h.latest.disk_total))}</td>
-                      <td className="r">{h.latest.temp != null ? `${Math.round(h.latest.temp)} °C` : "—"}</td>
+                      <td className="r">{(h.latest.cpu_temp ?? h.latest.temp) != null ? `${Math.round((h.latest.cpu_temp ?? h.latest.temp)!)} °C` : "—"}</td>
                       <td><AgentVersion h={h} /></td>
                     </tr>
                   ))}

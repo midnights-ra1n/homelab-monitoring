@@ -74,3 +74,57 @@ func TestHostActionRoundTrip(t *testing.T) {
 	}
 	t.Fatal("action result not stored")
 }
+
+func TestDockerSnapshotAndContainerUpdate(t *testing.T) {
+	s, ts := newTestServer(t)
+	cookie := setupAdmin(t, s, ts)
+	_, created := do(t, ts, "POST", "/api/hosts", cookie, map[string]string{"name": "docker-01"})
+	token := created["install"].(map[string]any)["token"].(string)
+	nonce := make([]byte, 32)
+	rand.Read(nonce)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(ts.URL, "http")+"/api/agent/ws", &websocket.DialOptions{HTTPHeader: http.Header{
+		"Authorization": {"Bearer " + token}, "X-Agent-Nonce": {base64.StdEncoding.EncodeToString(nonce)}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CloseNow()
+	var hello map[string]any
+	wsjson.Read(ctx, c, &hello)
+	wsjson.Write(ctx, c, map[string]any{"type": "docker", "docker": map[string]any{"containers": []map[string]any{
+		{"name": "nextcloud-app-1", "image": "nextcloud:29", "state": "running", "update": "available", "compose_project": "nextcloud", "compose_service": "app"},
+		{"name": "old", "image": "redis:7", "state": "exited", "update": "up_to_date"},
+	}}})
+	var d map[string]any
+	for i := 0; i < 50 && d == nil; i++ {
+		_, h := do(t, ts, "GET", "/api/hosts/1", cookie, nil)
+		d, _ = h["docker"].(map[string]any)
+		time.Sleep(20 * time.Millisecond)
+	}
+	if d == nil || d["running"] != 1.0 || d["updates_available"] != 1.0 {
+		t.Fatalf("docker summary: %v", d)
+	}
+	if resp, _ := do(t, ts, "POST", "/api/hosts/1/action", cookie, map[string]string{"action": "update_container", "target": "x; rm -rf /"}); resp.StatusCode != 400 {
+		t.Fatal("container names with shell characters must be refused")
+	}
+	if resp, _ := do(t, ts, "POST", "/api/hosts/1/action", cookie, map[string]string{"action": "update_container", "target": "nextcloud-app-1"}); resp.StatusCode != 200 {
+		t.Fatal("update_container")
+	}
+	var got map[string]string
+	if wsjson.Read(ctx, c, &got); got["target"] != "nextcloud-app-1" {
+		t.Fatalf("agent got %v", got)
+	}
+	wsjson.Write(ctx, c, map[string]string{"type": "action_result", "action": "update_container", "state": "done", "message": "ok"})
+	for i := 0; i < 50; i++ {
+		_, h := do(t, ts, "GET", "/api/hosts/1", cookie, nil)
+		if a, _ := h["action"].(map[string]any); a != nil && a["state"] == "done" {
+			if a["target"] != "nextcloud-app-1" {
+				t.Fatalf("target lost: %v", a)
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("result not stored")
+}

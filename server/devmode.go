@@ -105,6 +105,17 @@ func (s *Server) simulateAgents(ctx context.Context) {
 					}
 					s.storeSmart(h.ID, h.Name, &smartReport{Disks: disks})
 				}
+				if h.Name == "demo-docker" {
+					fp := func(x float64) *float64 { return &x }
+					const mb = 1 << 20
+					s.storeDocker(h.ID, &dockerSnapshot{Containers: []dockerContainer{
+						{ID: "a1b2c3d4e5f6", Name: "nextcloud-app-1", Image: "nextcloud:29-apache", State: "running", Health: "healthy", CPUPct: fp(3 + 10*wave), MemUsed: fp(420 * mb), MemLimit: fp(8192 * mb), NetRx: fp(9e8), NetTx: fp(3e8), ComposeProject: "nextcloud", ComposeService: "app", Update: "available"},
+						{ID: "b2c3d4e5f6a1", Name: "nextcloud-db-1", Image: "mariadb:11", State: "running", Health: "healthy", CPUPct: fp(1.2), MemUsed: fp(180 * mb), MemLimit: fp(8192 * mb), NetRx: fp(2e8), NetTx: fp(4e8), ComposeProject: "nextcloud", ComposeService: "db", Update: "up_to_date"},
+						{ID: "c3d4e5f6a1b2", Name: "uptime-kuma", Image: "louislam/uptime-kuma:1", State: "running", CPUPct: fp(0.4), MemUsed: fp(95 * mb), MemLimit: fp(8192 * mb), NetRx: fp(5e7), NetTx: fp(6e7), Update: "available"},
+						{ID: "d4e5f6a1b2c3", Name: "backup-job", Image: "restic/restic:0.17", State: "exited", ComposeProject: "backup", ComposeService: "restic", Update: "unknown"},
+						{ID: "e5f6a1b2c3d4", Name: "homepage", Image: "local/homepage:dev", State: "running", CPUPct: fp(0.1), MemUsed: fp(40 * mb), MemLimit: fp(512 * mb), Update: "local"},
+					}})
+				}
 				if h.Updates == nil {
 					pk := []agentPackage{
 						{Name: "libssl3", Current: "3.0.11-1~deb12u1", Candidate: "3.0.11-1~deb12u2", Security: true},
