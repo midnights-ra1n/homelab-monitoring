@@ -145,8 +145,8 @@ code, .mono { font-family: var(--font-mono); font-size: var(--text-sm); }
 @media (max-width: 960px) { .settings-section { grid-template-columns: 1fr; gap: var(--space-3); } }
 
 /* Badges */
-.badge { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: 500; white-space: nowrap; background: var(--bg-muted); color: var(--text-secondary); }
-.badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.badge { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: 500; white-space: nowrap; background: var(--bg-muted); color: var(--text-secondary); }
+.badge .badge-icon { width: 12px; height: 12px; flex: none; stroke-width: 2.25; margin-left: -2px; }
 .s-operational { background: var(--success-bg); color: var(--success-fg); }
 .s-degraded { background: var(--warning-bg); color: var(--warning-fg); }
 .s-maintenance { background: var(--info-bg); color: var(--info-fg); }

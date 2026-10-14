@@ -1,7 +1,7 @@
 import { Fragment, useState } from "react";
 import { ChevronDown, ChevronRight, Download, RefreshCw } from "lucide-react";
 import { actionBusy, api, fmtAgo, fmtDate, type Host } from "../api";
-import { Alert, Button, Card, Dialog, IconButton, Kpi, Link, Switch, usePoll } from "../ui";
+import { Alert, Button, Card, Dialog, IconButton, Kpi, Link, Switch, usePoll, BadgeIcon } from "../ui";
 import { useHostAction } from "./AgentVersion";
 
 export function updateTotals(hosts: Host[]) {
@@ -82,7 +82,7 @@ export function UpdatesPage() {
                         <td><Link to={`/hosts/${h.id}`}>{h.name}</Link><div className="xs tertiary">{h.info.os || (h.connected ? "" : "Agent hors ligne")}</div><ActionStatus h={h} /></td>
                         <td className="r">{u ? u.pending : "—"}</td>
                         <td className="r">{!u ? "—" : u.security > 0 ? <span className="badge s-minor_outage">{u.security}</span> : 0}</td>
-                        <td>{!u ? "—" : u.reboot_required ? <span className="badge s-degraded"><span className="dot" aria-hidden />Requis</span> : <span className="muted">Non</span>}</td>
+                        <td>{!u ? "—" : u.reboot_required ? <span className="badge s-degraded"><BadgeIcon cls="s-degraded" />Requis</span> : <span className="muted">Non</span>}</td>
                         <td className="muted" title={u?.lists_updated_at ? fmtDate(u.lists_updated_at) : undefined}>{u?.lists_updated_at ? fmtAgo(u.lists_updated_at) : "—"}</td>
                         <td className="muted">{u ? fmtAgo(u.checked_at) : "Pas encore"}</td>
                         <td className="r" style={{ whiteSpace: "nowrap" }}>

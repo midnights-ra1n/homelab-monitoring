@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Download } from "lucide-react";
 import { actionBusy, api, fmtAgo, fmtBytes, fmtPct, type DockerContainer, type Host } from "../api";
-import { Alert, Button, Card, Dialog, Kpi, Link, Segmented, usePoll } from "../ui";
+import { Alert, Button, Card, Dialog, Kpi, Link, Segmented, usePoll, BadgeIcon } from "../ui";
 import { useHostAction } from "./AgentVersion";
 
 const STATE: Record<string, [string, string]> = {
@@ -59,7 +59,7 @@ export function ContainersTable({ h, filter = "all", onChanged }: { h: Host; fil
                     {c.compose_project && <div className="xs tertiary">Compose : {c.compose_project} / {c.compose_service}</div>}
                   </td>
                   <td>
-                    <span className={`badge ${stCls}`}><span className="dot" aria-hidden />{st}</span>
+                    <span className={`badge ${stCls}`}><BadgeIcon cls={c.state === "exited" || c.state === "created" ? "stopped" : stCls} />{st}</span>
                     {c.health && c.health !== "healthy" && <div className="xs" style={{ color: c.health === "unhealthy" ? "var(--danger-fg)" : "var(--text-tertiary)" }}>{c.health === "unhealthy" ? "Healthcheck en échec" : "Démarrage…"}</div>}
                     {c.restart_count > 0 && <div className="xs tertiary">{c.restart_count} redémarrage(s)</div>}
                   </td>
@@ -67,7 +67,7 @@ export function ContainersTable({ h, filter = "all", onChanged }: { h: Host; fil
                   <td className="r">{c.state === "running" ? fmtPct(c.cpu_pct) : "—"}</td>
                   <td className="r">{c.state === "running" && c.mem_used != null ? fmtBytes(c.mem_used) : "—"}</td>
                   <td className="r">{c.state === "running" && c.net_rx != null ? `${fmtBytes(c.net_rx)} / ${fmtBytes(c.net_tx)}` : "—"}</td>
-                  <td><span className={`badge ${upCls}`} title={upHint}><span className="dot" aria-hidden />{up}</span></td>
+                  <td><span className={`badge ${upCls}`} title={upHint}><BadgeIcon cls={c.update === "local" ? "local" : upCls} />{up}</span></td>
                   <td className="r"><ContainerAction h={h} c={c} onAsk={() => setConfirm(c)} /></td>
                 </tr>
               );

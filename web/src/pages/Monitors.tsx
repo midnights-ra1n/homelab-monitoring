@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 import { api, certDays, fmtAgo, fmtDate, fmtMs, statusLabel, type Monitor, type MonitorInput, type MonitorType, type Series } from "../api";
-import { Alert, Button, Card, Chart, Dialog, Field, Link, Segmented, StatusBadge, Switch, UptimeBars, navigate, usePoll, useToast, fmtLatency } from "../ui";
+import { Alert, Button, Card, Chart, Dialog, Field, Link, Segmented, StatusBadge, Switch, UptimeBars, navigate, usePoll, useToast, fmtLatency, BadgeIcon } from "../ui";
 
 const TYPES: Record<MonitorType, string> = { http: "HTTP(S)", tcp: "Port TCP", dns: "DNS", ssl: "Certificat SSL" };
 const TARGET_HINT: Record<MonitorType, [string, string]> = {
@@ -18,7 +18,7 @@ export function CertBadge({ m }: { m: Monitor }) {
   const warn = m.config.warn_days ?? 14;
   const cls = d <= 0 ? "s-major_outage" : d < warn ? "s-degraded" : "s-operational";
   const label = d <= 0 ? "Expiré" : d < warn ? `Expire dans ${d} j` : `${d} jours`;
-  return <span className={`badge ${cls}`} title={m.cert_expires_at ? `Expire le ${fmtDate(m.cert_expires_at)}` : undefined}><span className="dot" aria-hidden />{label}</span>;
+  return <span className={`badge ${cls}`} title={m.cert_expires_at ? `Expire le ${fmtDate(m.cert_expires_at)}` : undefined}><BadgeIcon cls={cls} />{label}</span>;
 }
 
 export function MonitorsPage() {

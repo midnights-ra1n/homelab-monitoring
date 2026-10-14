@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { api, actionBusy, type Host, type HostActionName } from "../api";
-import { Button, useToast } from "../ui";
+import { Button, useToast, BadgeIcon } from "../ui";
 
 /** Sends an action to a host's agent; returns the updated host. */
 export function useHostAction(onDone?: (h: Host) => void) {
@@ -34,8 +34,8 @@ export function AgentVersion({ h, onUpdate, updating }: { h: Host; onUpdate?: ()
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
       <span className="mono small">{v}</span>
       {!/^v\d+\.\d+\.\d+$/.test(v) ? <span className="badge">Développement</span>
-        : h.agent_outdated ? <span className="badge s-degraded" title={`Dernière version : ${h.agent_latest}`}><span className="dot" aria-hidden />{h.agent_latest} disponible</span>
-        : h.agent_latest ? <span className="badge s-operational"><span className="dot" aria-hidden />À jour</span> : null}
+        : h.agent_outdated ? <span className="badge s-degraded" title={`Dernière version : ${h.agent_latest}`}><BadgeIcon cls="s-degraded" />{h.agent_latest} disponible</span>
+        : h.agent_latest ? <span className="badge s-operational"><BadgeIcon cls="s-operational" />À jour</span> : null}
       {onUpdate && h.agent_outdated && h.connected && (
         <Button size="sm" icon={<RefreshCw />} loading={updating || pending} onClick={(e) => { e.stopPropagation(); onUpdate(); }}>Mettre à jour l'agent</Button>
       )}

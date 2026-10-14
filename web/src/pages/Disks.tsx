@@ -1,6 +1,6 @@
 import { CheckCircle2, CircleAlert, HardDrive } from "lucide-react";
 import { api, fmtAgo, fmtBytes, fmtNum } from "../api";
-import { Alert, Card, Kpi, Link, Progress, usePoll } from "../ui";
+import { Alert, Card, Kpi, Link, Progress, usePoll, BadgeIcon } from "../ui";
 
 export type DiskHealthLevel = "good" | "watch" | "replace" | "failing";
 export interface Disk {
@@ -41,7 +41,7 @@ export function DiskCard({ d }: { d: Disk }) {
           <h3 className="ellipsis">{d.model || "Disque"}</h3>
           <div className="sub">{KIND[d.kind]} · {fmtBytes(d.capacity_bytes)} · <span className="mono">{d.name}</span></div>
         </div>
-        <span className={`badge ${cls}`}><span className="dot" aria-hidden />{label}</span>
+        <span className={`badge ${cls}`}><BadgeIcon cls={cls} />{label}</span>
       </div>
       <div className="card-body form" style={{ paddingTop: 0, gap: 12 }}>
         <p style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>

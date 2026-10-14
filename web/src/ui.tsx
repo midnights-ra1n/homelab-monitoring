@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import uPlot from "uplot";
-import { AlertTriangle, CheckCircle2, CircleAlert, Copy, Info, Wrench, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleAlert, CircleHelp, CircleStop, Copy, Info, OctagonX, Package, Wrench, X } from "lucide-react";
 import { statusLabel, type Day, type Status } from "./api";
 
 /* ---------- Routing (history API; the server serves the app shell on every path) ---------- */
@@ -124,16 +124,30 @@ export function IconButton({ label, icon, ...rest }: { label: string; icon: Reac
 }
 
 export function StatusBadge({ status }: { status: Status }) {
-  return <span className={`badge s-${status}`}><span className="dot" aria-hidden />{statusLabel[status]}</span>;
+  return <span className={`badge s-${status}`}><BadgeIcon cls={`s-${status}`} />{statusLabel[status]}</span>;
+}
+
+/** One icon per status, shared by badges and larger indicators: the colour is never the only cue. */
+const STATUS_ICONS = {
+  "s-operational": CheckCircle2, // coche
+  "s-degraded": AlertTriangle, // avertissement
+  "s-maintenance": Wrench, // maintenance
+  "s-minor_outage": CircleAlert, // !
+  "s-major_outage": OctagonX, // panne
+  "s-unknown": CircleHelp, // inconnu
+  stopped: CircleStop, // conteneur arrêté
+  local: Package, // image construite sur place
+} as const;
+
+/** Icon for a badge class (s-operational, s-degraded…); used in place of the old dot. */
+export function BadgeIcon({ cls }: { cls: string }) {
+  const Icon = STATUS_ICONS[cls as keyof typeof STATUS_ICONS] ?? Info;
+  return <Icon aria-hidden className="badge-icon" />;
 }
 
 export function StatusIcon({ status }: { status: Status }) {
-  const props = { "aria-hidden": true, style: { color: `var(--${statusTone(status)}-solid)` } } as const;
-  if (status === "operational") return <CheckCircle2 {...props} />;
-  if (status === "maintenance") return <Wrench {...props} />;
-  if (status === "degraded") return <AlertTriangle {...props} />;
-  if (status === "unknown") return <Info {...props} style={{ color: "var(--text-tertiary)" }} />;
-  return <CircleAlert {...props} />;
+  const Icon = STATUS_ICONS[`s-${status}`];
+  return <Icon aria-hidden style={{ color: status === "unknown" ? "var(--text-tertiary)" : `var(--${statusTone(status)}-solid)` }} />;
 }
 
 export function statusTone(s: Status) {
