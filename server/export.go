@@ -130,6 +130,7 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	s.loadTimezone()
 	for i := range toAdd {
 		if _, err := s.insertMonitor(&toAdd[i]); err != nil {
 			serverErr(w, err)

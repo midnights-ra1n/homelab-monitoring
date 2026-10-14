@@ -123,9 +123,9 @@ func (s *Server) emailData(evs []Event) emailData {
 }
 
 func buildEmailData(title, url string, evs []Event) emailData {
-	d := emailData{Title: title, Date: time.Now().Format("02/01/2006 15:04"), URL: url}
+	d := emailData{Title: title, Date: time.Now().In(localTZ()).Format("02/01/2006 15:04"), URL: url}
 	for _, e := range evs {
-		ee := emailEvent{Event: e, FromLabel: statusLabels[e.From], ToLabel: statusLabels[e.To], Color: statusColors[e.To], Time: e.At.Format("15:04:05")}
+		ee := emailEvent{Event: e, FromLabel: statusLabels[e.From], ToLabel: statusLabels[e.To], Color: statusColors[e.To], Time: e.At.In(localTZ()).Format("15:04:05")}
 		if e.Kind == KindCert {
 			d.Warnings++
 			ee.FromLabel, ee.ToLabel, ee.Color = "", "Expiration proche", statusColors[StatusDegraded]
@@ -247,7 +247,7 @@ func (s *Server) sendMail(subject, htmlBody string) error {
 	msg := "From: " + from.String() + "\r\n" +
 		"To: " + strings.Join(rcpts, ", ") + "\r\n" +
 		"Subject: " + mime.QEncoding.Encode("utf-8", subject) + "\r\n" +
-		"Date: " + time.Now().Format(time.RFC1123Z) + "\r\n" +
+		"Date: " + time.Now().In(localTZ()).Format(time.RFC1123Z) + "\r\n" +
 		"MIME-Version: 1.0\r\n" +
 		"Content-Type: text/html; charset=utf-8\r\n" +
 		"Content-Transfer-Encoding: 8bit\r\n\r\n" +

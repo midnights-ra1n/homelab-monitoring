@@ -230,7 +230,7 @@ var reportTpl = template.Must(template.New("report").Funcs(template.FuncMap{
 		if p == nil {
 			return "—"
 		}
-		return time.Unix(*p, 0).Format("02/01/2006")
+		return time.Unix(*p, 0).In(localTZ()).Format("02/01/2006")
 	},
 }).Parse(`<!doctype html><html lang="fr"><body style="margin:0;background:#f2f6f8;font-family:Geist,system-ui,-apple-system,'Segoe UI',sans-serif;color:#131b1f">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px">
@@ -283,12 +283,12 @@ func pctString(p *float64) string {
 	return frNum(*p*100, 2) + " %"
 }
 
-// runReports sends last month's report once, on the 1st after 08:00 (server time).
+// runReports sends last month's report once, on the 1st after 08:00 in the configured time zone.
 func (s *Server) runReports(ctx context.Context) {
 	t := time.NewTicker(30 * time.Minute)
 	defer t.Stop()
 	for {
-		now := time.Now()
+		now := time.Now().In(localTZ())
 		if s.getSetting("report_monthly_enabled", "false") == "true" && s.getSetting("smtp_enabled", "false") == "true" && now.Day() == 1 && now.Hour() >= 8 {
 			start, _ := parseMonth("")
 			if s.getSetting("report_last_sent", "") != start.Format("2006-01") {

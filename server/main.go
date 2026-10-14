@@ -102,6 +102,7 @@ func run(cfg Config) error {
 		agents:  map[int64]*agentConn{},
 	}
 	s.notifier = newNotifier(s)
+	s.loadTimezone()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

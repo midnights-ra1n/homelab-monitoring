@@ -337,3 +337,21 @@ func TestCertificateWarningSentOnce(t *testing.T) {
 		t.Fatalf("subject %q err %v", subj, err)
 	}
 }
+
+func TestTimezoneSetting(t *testing.T) {
+	s, ts := newTestServer(t)
+	cookie := setupAdmin(t, s, ts)
+	if resp, _ := do(t, ts, "PUT", "/api/settings", cookie, map[string]string{"timezone": "Mars/Olympus"}); resp.StatusCode != 400 {
+		t.Fatal("unknown zone accepted")
+	}
+	if resp, _ := do(t, ts, "PUT", "/api/settings", cookie, map[string]string{"timezone": "Europe/Paris"}); resp.StatusCode != 200 {
+		t.Fatal("Europe/Paris refused")
+	}
+	// 11:46 UTC on 14 Oct 2026 is 13:46 in Paris (CEST).
+	at := time.Date(2026, 10, 14, 11, 46, 0, 0, time.UTC)
+	d := buildEmailData("T", "", []Event{{Kind: "Sonde", Name: "x", From: StatusOperational, To: StatusMajor, At: at}})
+	if d.Events[0].Time != "13:46:00" {
+		t.Fatalf("event time %s, want 13:46:00", d.Events[0].Time)
+	}
+	tzLoc.Store(time.UTC) // other tests expect the default
+}

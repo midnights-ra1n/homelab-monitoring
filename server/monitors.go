@@ -299,7 +299,7 @@ func checkHTTP(ctx context.Context, m *Monitor) checkResult {
 		cert = &na
 		// Reachable only with ignore_tls: an expired certificate is still an outage.
 		if time.Until(na) <= 0 {
-			return checkResult{StatusMajor, lat, "Certificat expiré le " + na.Format("02/01/2006"), cert}
+			return checkResult{StatusMajor, lat, "Certificat expiré le " + na.In(localTZ()).Format("02/01/2006"), cert}
 		}
 	}
 	match, _ := statusMatcher(m.Config.ExpectedStatus)
@@ -401,7 +401,7 @@ func checkSSL(ctx context.Context, m *Monitor) checkResult {
 		return checkResult{StatusMajor, lat, "Aucun certificat présenté", nil}
 	}
 	na := certs[0].NotAfter
-	expiry := na.Format("02/01/2006")
+	expiry := na.In(localTZ()).Format("02/01/2006")
 	if time.Until(na) <= 0 {
 		return checkResult{StatusMajor, lat, "Certificat expiré le " + expiry, &na}
 	}
@@ -513,7 +513,7 @@ func (s *Server) recordResult(m *Monitor, res checkResult, eff string) error {
 	}
 	if warnCert {
 		s.notifier.add(Event{Kind: KindCert, Name: m.Name, Message: fmt.Sprintf("Le certificat expire dans %d jour(s), le %s",
-			daysLeft(*res.certExpiry), res.certExpiry.Format("02/01/2006 à 15:04")), At: now})
+			daysLeft(*res.certExpiry), res.certExpiry.In(localTZ()).Format("02/01/2006 à 15:04")), At: now})
 	}
 	if eff != m.Status && m.Status != StatusUnknown && eff != StatusUnknown &&
 		eff != StatusMaintenance && m.Status != StatusMaintenance {

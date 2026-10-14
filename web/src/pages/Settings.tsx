@@ -60,6 +60,22 @@ export function SettingsPage({ theme }: { theme: { mode: ThemeMode; setMode: (m:
           <Field label="Mode"><Segmented label="Mode" value={theme.mode} onChange={theme.setMode} options={[["system", "Système"], ["light", "Clair"], ["dark", "Sombre"]]} /></Field>
         </Section>
 
+        <Section title="Fuseau horaire" desc="Utilisé pour les heures des e-mails, des rapports mensuels et des messages des sondes. Le tableau de bord affiche toujours l'heure de votre navigateur.">
+          <Field label="Fuseau" htmlFor="s-tz" hint={`Heure actuelle dans ce fuseau : ${(() => { try { return new Date().toLocaleString("fr-FR", { timeZone: v("timezone"), dateStyle: "short", timeStyle: "short" }); } catch { return "—"; } })()}`}>
+            <select id="s-tz" className="select" value={v("timezone")} onChange={set("timezone")}>
+              {Intl.supportedValuesOf("timeZone").concat(Intl.supportedValuesOf("timeZone").includes(v("timezone")) ? [] : [v("timezone")]).map((z) => <option key={z} value={z}>{z.replace(/_/g, " ")}</option>)}
+            </select>
+          </Field>
+          <div className="row">
+            <Button variant="primary" loading={busy === "tz"} onClick={() => save("tz", ["timezone"])}>Enregistrer le fuseau</Button>
+            {Intl.DateTimeFormat().resolvedOptions().timeZone !== v("timezone") && (
+              <Button onClick={() => setDraft({ ...draft, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone })}>
+                Utiliser celui de ce navigateur ({Intl.DateTimeFormat().resolvedOptions().timeZone})
+              </Button>
+            )}
+          </div>
+        </Section>
+
         <Section title="Collecte et rétention" desc="Un intervalle plus long et une rétention plus courte allègent le serveur. Les données plus anciennes sont supprimées toutes les heures.">
           <div className="row">
             {input("agent_interval_s", "Intervalle des agents (s)", { type: "number", min: 5 })}

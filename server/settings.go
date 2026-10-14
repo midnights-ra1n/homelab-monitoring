@@ -41,6 +41,7 @@ var settingDefs = map[string]string{
 	"api_enabled":            "false",
 	"api_cors_origins":       "",
 	"agent_hub_url":          "",
+	"timezone":               defaultTimezone,
 	"report_monthly_enabled": "false",
 }
 
@@ -93,6 +94,11 @@ func validateSettings(in map[string]string) string {
 	}
 	if v, ok := in["smtp_tls"]; ok && v != "starttls" && v != "tls" && v != "none" {
 		return "Le chiffrement SMTP doit être starttls, tls ou none"
+	}
+	if v, ok := in["timezone"]; ok && v != "" {
+		if _, err := time.LoadLocation(v); err != nil || v == "Local" {
+			return "Fuseau horaire inconnu : " + v + " (exemple : Europe/Paris)"
+		}
 	}
 	if v, ok := in["email_mode"]; ok && v != "blocks" && v != "html" {
 		return "Le mode d'e-mail doit être blocks ou html"
@@ -181,6 +187,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		serverErr(w, err)
 		return
 	}
+	s.loadTimezone()
 	s.handleGetSettings(w, r)
 }
 
