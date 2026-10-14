@@ -115,8 +115,25 @@ export function SettingsPage({ theme }: { theme: { mode: ThemeMode; setMode: (m:
           {input("smtp_to", "Destinataires", { placeholder: "moi@example.fr, autre@example.fr" }, "Séparés par des virgules")}
           {input("notify_window_s", "Fenêtre de regroupement (s)", { type: "number", min: 0 }, "0 : envoi immédiat de chaque changement")}
           {input("status_title", "Nom de l'infrastructure", {}, "Utilisé dans les e-mails ({titre}) et les rapports")}
+          <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
+            <legend style={{ fontSize: "var(--text-sm)", fontWeight: 500, marginBottom: 6 }}>Alerter aussi pour</legend>
+            <div className="form" style={{ gap: 10 }}>
+              <label className="check"><input type="checkbox" checked={bool("notify_security_updates")} onChange={(e) => setDraft({ ...draft, notify_security_updates: String(e.target.checked) })} />Nouvelles mises à jour de sécurité</label>
+              <label className="check"><input type="checkbox" checked={bool("notify_reboot")} onChange={(e) => setDraft({ ...draft, notify_reboot: String(e.target.checked) })} />Redémarrage requis</label>
+              <label className="check"><input type="checkbox" checked={bool("notify_docker_updates")} onChange={(e) => setDraft({ ...draft, notify_docker_updates: String(e.target.checked) })} />Nouvelles images Docker disponibles</label>
+              <Field label="Santé des disques (SMART)" htmlFor="s-smartlvl">
+                <select id="s-smartlvl" className="select" value={v("notify_smart_level")} onChange={set("notify_smart_level")}>
+                  <option value="watch">Dès qu'un disque est à surveiller</option>
+                  <option value="replace">Quand un disque est à remplacer</option>
+                  <option value="failing">Seulement en cas de défaillance</option>
+                  <option value="off">Jamais</option>
+                </select>
+              </Field>
+            </div>
+            <span className="hint xs tertiary" style={{ display: "block", marginTop: 6 }}>Chaque mise à jour, redémarrage, image ou disque n'est signalé qu'une fois ; ils rejoignent le même e-mail que les autres alertes de la fenêtre de regroupement.</span>
+          </fieldset>
           <div className="row">
-            <Button variant="primary" loading={busy === "smtp"} onClick={() => save("smtp", ["smtp_enabled", "smtp_host", "smtp_port", "smtp_tls", "smtp_user", "smtp_pass", "smtp_from", "smtp_to", "notify_window_s", "status_title"])}>Enregistrer les notifications</Button>
+            <Button variant="primary" loading={busy === "smtp"} onClick={() => save("smtp", ["smtp_enabled", "smtp_host", "smtp_port", "smtp_tls", "smtp_user", "smtp_pass", "smtp_from", "smtp_to", "notify_window_s", "status_title", "notify_security_updates", "notify_reboot", "notify_docker_updates", "notify_smart_level"])}>Enregistrer les notifications</Button>
             <Button icon={<Send />} loading={busy === "test"} onClick={async () => {
               setBusy("test");
               try { await api.post("/api/settings/test-email"); toast("E-mail de test envoyé"); } catch (e) { setError((e as Error).message); }

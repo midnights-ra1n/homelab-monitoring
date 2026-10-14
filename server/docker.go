@@ -4,7 +4,9 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -33,6 +35,8 @@ type dockerSnapshot struct {
 	// Computed by the hub.
 	Running          int `json:"running"`
 	UpdatesAvailable int `json:"updates_available"`
+	// Containers whose image update was already e-mailed (reported once).
+	AlertedUpdates []string `json:"alerted_updates,omitempty"`
 }
 
 func clip(s string, n int) string {
@@ -42,7 +46,7 @@ func clip(s string, n int) string {
 	return s
 }
 
-func (s *Server) storeDocker(id int64, d *dockerSnapshot) error {
+func (s *Server) storeDocker(id int64, hostName string, d *dockerSnapshot) error {
 	if len(d.Containers) > 500 {
 		d.Containers = d.Containers[:500]
 	}
@@ -59,6 +63,30 @@ func (s *Server) storeDocker(id int64, d *dockerSnapshot) error {
 		}
 	}
 	d.Error = clip(d.Error, 500)
+
+	var prev dockerSnapshot
+	var raw string
+	if s.db.QueryRow(`SELECT docker FROM hosts WHERE id=?`, id).Scan(&raw) == nil {
+		json.Unmarshal([]byte(raw), &prev)
+	}
+	known := map[string]bool{}
+	for _, k := range prev.AlertedUpdates {
+		known[k] = true
+	}
+	var available, fresh []string
+	for _, c := range d.Containers {
+		if c.Update == "available" {
+			k := c.Name + " " + c.Image
+			available = append(available, k)
+			if !known[k] {
+				fresh = append(fresh, c.Name)
+			}
+		}
+	}
+	d.AlertedUpdates = available
+	if len(fresh) > 0 && s.getSetting("notify_docker_updates", "false") == "true" {
+		s.notifier.add(Event{Kind: KindImage, Name: hostName, Message: fmt.Sprintf("Nouvelle image disponible pour %s", strings.Join(fresh, ", ")), At: time.Now()})
+	}
 	d.CollectedAt = time.Now().Unix()
 	b, _ := json.Marshal(d)
 	_, err := s.db.Exec(`UPDATE hosts SET docker=? WHERE id=?`, string(b), id)

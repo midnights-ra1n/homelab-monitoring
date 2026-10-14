@@ -33,6 +33,15 @@ type reportHost struct {
 	MemAvg       *float64 `json:"mem_avg"`
 }
 
+type reportUpdates struct {
+	HostID         int64  `json:"host_id"`
+	Host           string `json:"host"`
+	Pending        int    `json:"pending"`
+	Security       int    `json:"security"`
+	RebootRequired bool   `json:"reboot_required"`
+	Images         int    `json:"images"` // Docker images to update
+}
+
 type MonthlyReport struct {
 	Month          string          `json:"month"` // YYYY-MM
 	From           int64           `json:"from"`
@@ -46,6 +55,8 @@ type MonthlyReport struct {
 	PendingUpdates int             `json:"pending_updates"`
 	SecurityUpd    int             `json:"security_updates"`
 	DisksAttention []diskHealth    `json:"disks_attention"`
+	Updates        []reportUpdates `json:"updates"`        // hosts with something to do, at generation time
+	DockerUpdates  int             `json:"docker_updates"` // containers whose image has a newer version
 	GeneratedAt    int64           `json:"generated_at"`
 }
 
@@ -61,7 +72,7 @@ func parseMonth(s string) (time.Time, bool) {
 func (s *Server) monthlyReport(start time.Time) (*MonthlyReport, error) {
 	end := start.AddDate(0, 1, 0)
 	rep := &MonthlyReport{Month: start.Format("2006-01"), From: start.Unix(), To: end.Unix(), GeneratedAt: time.Now().Unix(),
-		Monitors: []reportMonitor{}, Hosts: []reportHost{}, Certificates: []Monitor{}, DisksAttention: []diskHealth{}}
+		Monitors: []reportMonitor{}, Hosts: []reportHost{}, Certificates: []Monitor{}, DisksAttention: []diskHealth{}, Updates: []reportUpdates{}}
 
 	rows, err := s.db.Query(`SELECT m.id, m.name, m.type, SUM(d.total), SUM(d.up), SUM(d.latency_sum), SUM(d.latency_n),
 			SUM(CASE WHEN d.worst>=3 THEN 1 ELSE 0 END), MAX(d.worst)
@@ -150,9 +161,18 @@ func (s *Server) monthlyReport(start time.Time) (*MonthlyReport, error) {
 		return nil, err
 	}
 	for _, h := range hosts {
+		u := reportUpdates{HostID: h.ID, Host: h.Name}
 		if h.Updates != nil {
 			rep.PendingUpdates += h.Updates.Pending
 			rep.SecurityUpd += h.Updates.Security
+			u.Pending, u.Security, u.RebootRequired = h.Updates.Pending, h.Updates.Security, h.Updates.RebootRequired
+		}
+		if h.Docker != nil {
+			rep.DockerUpdates += h.Docker.UpdatesAvailable
+			u.Images = h.Docker.UpdatesAvailable
+		}
+		if u.Pending > 0 || u.RebootRequired || u.Images > 0 {
+			rep.Updates = append(rep.Updates, u)
 		}
 	}
 	disks, err := s.loadDisks()
@@ -252,9 +272,20 @@ var reportTpl = template.Must(template.New("report").Funcs(template.FuncMap{
 {{range .R.Hosts}}<tr style="border-top:1px solid #e7ecef"><td>{{.Name}}</td><td align="right">{{pct .Availability}}</td><td align="right">{{if .CPUAvg}}{{printf "%.0f" .CPUAvg}} %{{else}}—{{end}}</td><td align="right">{{if .MemAvg}}{{printf "%.0f" .MemAvg}} %{{else}}—{{end}}</td></tr>{{end}}
 </table></td></tr>
 <tr><td style="padding:0 16px 16px;font-size:13px">
-<div><strong>Mises à jour en attente :</strong> {{.R.PendingUpdates}} dont {{.R.SecurityUpd}} de sécurité</div>
-{{if .R.Certificates}}<div style="margin-top:6px"><strong>Certificats expirant sous 30 jours :</strong> {{range $i, $c := .R.Certificates}}{{if $i}}, {{end}}{{$c.Name}} ({{date $c.CertExpires}}){{end}}</div>{{end}}
-{{if .R.DisksAttention}}<div style="margin-top:6px"><strong>Disques à surveiller :</strong> {{range $i, $d := .R.DisksAttention}}{{if $i}}, {{end}}{{$d.Name}} ({{$d.Summary}} Durée restante estimée : {{days $d.LifeLeftDays}}){{end}}</div>{{end}}
+<div style="font-size:14px;font-weight:600;margin-bottom:8px">Mises à jour</div>
+<div>{{.R.PendingUpdates}} paquet(s) en attente dont {{.R.SecurityUpd}} de sécurité{{if .R.DockerUpdates}} · {{.R.DockerUpdates}} image(s) Docker à mettre à jour{{end}}</div>
+{{if .R.Updates}}<table width="100%" cellpadding="6" cellspacing="0" style="font-size:13px;border-collapse:collapse;margin-top:8px">
+<tr style="background:#f8fafc;color:#546066"><td>Hôte</td><td align="right">Paquets</td><td align="right">Sécurité</td><td align="right">Images Docker</td><td>Redémarrage</td></tr>
+{{range .R.Updates}}<tr style="border-top:1px solid #e7ecef"><td>{{.Host}}</td><td align="right">{{.Pending}}</td><td align="right"{{if .Security}} style="color:#9d3533;font-weight:600"{{end}}>{{.Security}}</td><td align="right">{{.Images}}</td><td>{{if .RebootRequired}}<span style="color:#8a4e00;font-weight:600">Requis</span>{{else}}Non{{end}}</td></tr>{{end}}
+</table>{{end}}
+</td></tr>
+<tr><td style="padding:0 16px 16px;font-size:13px">
+<div style="font-size:14px;font-weight:600;margin-bottom:8px">Santé des disques (SMART)</div>
+{{if .R.DisksAttention}}<table width="100%" cellpadding="6" cellspacing="0" style="font-size:13px;border-collapse:collapse">
+<tr style="background:#f8fafc;color:#546066"><td>Disque</td><td>État</td><td align="right">Durée restante estimée</td></tr>
+{{range .R.DisksAttention}}<tr style="border-top:1px solid #e7ecef"><td>{{.Name}}<div style="color:#67727a;font-size:12px">{{.Model}}</div></td><td>{{.Summary}}</td><td align="right">{{days .LifeLeftDays}}</td></tr>{{end}}
+</table>{{else}}<div>Tous les disques suivis sont en bon état.</div>{{end}}
+{{if .R.Certificates}}<div style="margin-top:12px"><strong>Certificats expirant sous 30 jours :</strong> {{range $i, $c := .R.Certificates}}{{if $i}}, {{end}}{{$c.Name}} ({{date $c.CertExpires}}){{end}}</div>{{end}}
 </td></tr>
 <tr><td style="padding:12px 16px;font-size:12px;color:#67727a;border-top:1px solid #e7ecef">{{if .URL}}<a href="{{.URL}}/reports" style="color:#16695a">Voir le rapport complet</a>{{end}}</td></tr>
 </table></td></tr></table></body></html>`))

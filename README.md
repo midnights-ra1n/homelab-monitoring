@@ -10,6 +10,7 @@ Supervision légère d'un homelab : un **hub** (Go + SQLite + interface React, l
 - Avertissement e-mail avant l'expiration d'un certificat (délai réglable par sonde, par exemple 3 jours), envoyé une seule fois par certificat.
 - États façon Statuspage : opérationnel, performances dégradées, maintenance, panne partielle, panne majeure.
 - Alertes e-mail SMTP **regroupées** : tous les changements d'état d'une fenêtre (60 s par défaut) partent dans un seul message. Modèle HTML entièrement personnalisable avec aperçu.
+- Alertes aussi pour les nouvelles mises à jour de sécurité, les redémarrages requis, la santé SMART (seuil réglable) et, en option, les nouvelles images Docker : chaque élément n'est signalé qu'une fois.
 - Santé des disques (SMART) : état lisible (bon état, à surveiller, à remplacer, défaillant), score, disque utilisable ou non, durée restante estimée, alerte e-mail si un disque se dégrade.
 - Page de statut publique (`/status`) composée par blocs (en-tête, état global, services avec historique 30/60/90 jours, disponibilité, graphique de latence, texte), réordonnables par glisser-déposer, avec aperçu en direct.
 - E-mail d'alerte composé par blocs (en-tête, résumé, événements, texte, bouton, pied de page) ou en HTML avancé.

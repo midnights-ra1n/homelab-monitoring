@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Printer, Send } from "lucide-react";
 import { api, fmtDate, fmtMs, fmtPct, type Monitor, type Status } from "../api";
-import { Alert, Button, Card, Kpi, Link, StatusBadge, usePoll, useToast } from "../ui";
+import { Alert, BadgeIcon, Button, Card, Kpi, Link, StatusBadge, usePoll, useToast } from "../ui";
 import { fmtLife, type Disk } from "./Disks";
 
 interface Report {
@@ -9,6 +9,7 @@ interface Report {
   monitors: { id: number; name: string; type: string; uptime: number | null; avg_latency_ms: number | null; incident_days: number; worst: Status }[];
   hosts: { id: number; name: string; availability: number | null; cpu_avg: number | null; mem_avg: number | null }[];
   certificates_expiring: Monitor[]; pending_updates: number; security_updates: number; disks_attention: Disk[]; generated_at: number;
+  updates: { host_id: number; host: string; pending: number; security: number; reboot_required: boolean; images: number }[]; docker_updates: number;
 }
 
 const ratio = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(2).replace(".", ",")} %`);
@@ -81,6 +82,21 @@ export function ReportsPage() {
                 ))}</tbody>
               </table>
             </div>
+          </Card>
+          <Card title="Mises à jour" sub={`${data.pending_updates} paquet(s) dont ${data.security_updates} de sécurité${data.docker_updates ? ` · ${data.docker_updates} image(s) Docker` : ""} — situation actuelle`} flush>
+            {data.updates.length === 0 ? <div className="empty small">Tous les hôtes sont à jour.</div> : (
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>Hôte</th><th className="r">Paquets</th><th className="r">Sécurité</th><th className="r">Images Docker</th><th>Redémarrage</th></tr></thead>
+                  <tbody>{data.updates.map((u) => (
+                    <tr key={u.host_id}><td><Link to={`/hosts/${u.host_id}`}>{u.host}</Link></td><td className="r">{u.pending}</td>
+                      <td className="r">{u.security > 0 ? <span className="badge s-minor_outage"><BadgeIcon cls="s-minor_outage" />{u.security}</span> : 0}</td>
+                      <td className="r">{u.images}</td>
+                      <td>{u.reboot_required ? <span className="badge s-degraded"><BadgeIcon cls="s-degraded" />Requis</span> : <span className="muted">Non</span>}</td></tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            )}
           </Card>
           <div className="grid cols-2">
             <Card title="Certificats expirant sous 30 jours" flush>

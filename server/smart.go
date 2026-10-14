@@ -212,7 +212,8 @@ func (s *Server) storeSmart(id int64, hostName string, rep *smartReport) error {
 	for _, d := range rep.Disks {
 		h := analyzeDisk(d)
 		old, seen := before[d.Serial+d.Name]
-		if diskRank[h.Health] >= diskRank[DiskReplace] && (!seen || diskRank[h.Health] > diskRank[old]) {
+		level := s.getSetting("notify_smart_level", DiskReplace)
+		if level != "off" && diskRank[h.Health] >= diskRank[level] && (!seen || diskRank[h.Health] > diskRank[old]) {
 			s.notifier.add(Event{Kind: KindDisk, Name: hostName + " · " + d.Model + " (" + d.Name + ")", Message: h.Summary + " " + joinReasons(h.Reasons), At: time.Now()})
 		}
 	}

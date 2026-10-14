@@ -21,8 +21,24 @@ import (
 // KindCert events warn about a certificate nearing expiry; they carry no status change.
 const KindCert = "Certificat SSL"
 
-// KindDisk events report a disk whose SMART health became "replace" or "failing".
+// KindDisk events report a disk whose SMART health got worse than the configured level.
 const KindDisk = "Disque"
+
+// One-off warnings about pending work; like KindCert they carry no status change.
+const (
+	KindUpdates = "Mises à jour"
+	KindReboot  = "Redémarrage"
+	KindImage   = "Image Docker"
+)
+
+// warningLabels gives the badge text and colour of each warning kind in e-mails.
+var warningLabels = map[string][2]string{
+	KindCert:    {"Expiration proche", statusColors[StatusDegraded]},
+	KindDisk:    {"Santé du disque", statusColors[StatusMinor]},
+	KindUpdates: {"Mises à jour de sécurité", statusColors[StatusDegraded]},
+	KindReboot:  {"Redémarrage requis", statusColors[StatusDegraded]},
+	KindImage:   {"Image à mettre à jour", statusColors[StatusMaintenance]},
+}
 
 type Event struct {
 	Kind    string // "Hôte", "Sonde" or KindCert
@@ -86,7 +102,7 @@ var statusColors = map[string]string{
 	StatusMinor: "#bd413f", StatusMajor: "#9d3533", StatusUnknown: "#717c83",
 }
 
-const defaultSubject = `{{if .Down}}[Alerte] {{.Down}} service(s) en panne{{else if .Warnings}}[Avertissement] {{.Warnings}} avertissement(s) : certificat ou disque{{else}}[Rétabli] {{len .Events}} changement(s) d'état{{end}}`
+const defaultSubject = `{{if .Down}}[Alerte] {{.Down}} service(s) en panne{{else if .Warnings}}[Avertissement] {{.Warnings}} avertissement(s){{else}}[Rétabli] {{len .Events}} changement(s) d'état{{end}}`
 
 const defaultEmailHTML = `<!doctype html>
 <html lang="fr"><body style="margin:0;background:#f2f6f8;font-family:Geist,system-ui,-apple-system,'Segoe UI',sans-serif;color:#131b1f">
@@ -126,12 +142,9 @@ func buildEmailData(title, url string, evs []Event) emailData {
 	d := emailData{Title: title, Date: time.Now().In(localTZ()).Format("02/01/2006 15:04"), URL: url}
 	for _, e := range evs {
 		ee := emailEvent{Event: e, FromLabel: statusLabels[e.From], ToLabel: statusLabels[e.To], Color: statusColors[e.To], Time: e.At.In(localTZ()).Format("15:04:05")}
-		if e.Kind == KindCert {
+		if w, ok := warningLabels[e.Kind]; ok {
 			d.Warnings++
-			ee.FromLabel, ee.ToLabel, ee.Color = "", "Expiration proche", statusColors[StatusDegraded]
-		} else if e.Kind == KindDisk {
-			d.Warnings++
-			ee.FromLabel, ee.ToLabel, ee.Color = "", "Disque à remplacer", statusColors[StatusMinor]
+			ee.FromLabel, ee.ToLabel, ee.Color = "", w[0], w[1]
 		} else if statusRank(e.To) >= statusRank(StatusMinor) {
 			d.Down++
 		}

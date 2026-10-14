@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -82,6 +83,9 @@ type agentUpdates struct {
 	// Computed by the hub, so list views can drop Packages and keep the counts.
 	Pending  int `json:"pending"`
 	Security int `json:"security"`
+	// What was already e-mailed, so each update or reboot is reported once.
+	AlertedSecurity []string `json:"alerted_security,omitempty"`
+	RebootAlerted   bool     `json:"reboot_alerted,omitempty"`
 }
 
 type agentMsg struct {
@@ -133,7 +137,7 @@ func withoutPackages(hosts []Host) []Host {
 	for i := range hosts {
 		if hosts[i].Updates != nil {
 			u := *hosts[i].Updates
-			u.Packages = nil
+			u.Packages, u.AlertedSecurity = nil, nil
 			hosts[i].Updates = &u
 		}
 	}
@@ -516,7 +520,7 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 		case m.Type == "action_result" && hostActions[m.Action] && (m.State == "running" || m.State == "done" || m.State == "failed"):
 			s.setHostAction(id, m.Action, m.State, m.Message)
 		case m.Type == "docker" && m.Docker != nil:
-			if err := s.storeDocker(id, m.Docker); err != nil {
+			if err := s.storeDocker(id, hostName, m.Docker); err != nil {
 				slog.Error("store docker", "err", err)
 			}
 		case m.Type == "smart" && m.Smart != nil:
@@ -524,7 +528,7 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 				slog.Error("store smart", "err", err)
 			}
 		case m.Type == "updates" && m.Updates != nil:
-			if err := s.storeUpdates(id, m.Updates); err != nil {
+			if err := s.storeUpdates(id, hostName, m.Updates); err != nil {
 				slog.Error("store updates", "err", err)
 			}
 		case m.Type == "metrics" && m.Metrics != nil:
@@ -540,17 +544,47 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) storeUpdates(id int64, u *agentUpdates) error {
+func (s *Server) storeUpdates(id int64, hostName string, u *agentUpdates) error {
 	if len(u.Packages) > 5000 {
 		u.Packages = u.Packages[:5000]
 	}
 	u.Pending, u.Security = len(u.Packages), 0
+	var security []string
 	for _, p := range u.Packages {
 		if p.Security {
 			u.Security++
+			security = append(security, p.Name+" "+p.Candidate)
 		}
 	}
 	u.CheckedAt = time.Now().Unix()
+
+	// Alert once per new security update and once per reboot request, never on every scan.
+	var prev agentUpdates
+	var raw string
+	if s.db.QueryRow(`SELECT updates FROM hosts WHERE id=?`, id).Scan(&raw) == nil {
+		json.Unmarshal([]byte(raw), &prev)
+	}
+	known := map[string]bool{}
+	for _, k := range prev.AlertedSecurity {
+		known[k] = true
+	}
+	var fresh []string
+	for _, k := range security {
+		if !known[k] {
+			fresh = append(fresh, strings.SplitN(k, " ", 2)[0])
+		}
+	}
+	u.AlertedSecurity, u.RebootAlerted = security, u.RebootRequired
+	if len(fresh) > 0 && s.getSetting("notify_security_updates", "true") == "true" {
+		list := strings.Join(fresh[:min(len(fresh), 8)], ", ")
+		if len(fresh) > 8 {
+			list += fmt.Sprintf(" et %d autre(s)", len(fresh)-8)
+		}
+		s.notifier.add(Event{Kind: KindUpdates, Name: hostName, Message: fmt.Sprintf("%d nouvelle(s) mise(s) à jour de sécurité : %s", len(fresh), list), At: time.Now()})
+	}
+	if u.RebootRequired && !prev.RebootAlerted && s.getSetting("notify_reboot", "true") == "true" {
+		s.notifier.add(Event{Kind: KindReboot, Name: hostName, Message: "Un redémarrage est nécessaire pour appliquer les mises à jour installées", At: time.Now()})
+	}
 	b, _ := json.Marshal(u)
 	_, err := s.db.Exec(`UPDATE hosts SET updates=? WHERE id=?`, string(b), id)
 	return err

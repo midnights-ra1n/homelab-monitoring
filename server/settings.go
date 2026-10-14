@@ -16,33 +16,37 @@ import (
 // settingDefs lists every user-editable setting with its default value.
 // smtp_pass is write-only: it is never sent back to the browser or exported.
 var settingDefs = map[string]string{
-	"agent_interval_s":       "30",
-	"retention_metrics_days": "30",
-	"retention_results_days": "30",
-	"retention_daily_days":   "365",
-	"notify_window_s":        "60",
-	"smtp_enabled":           "false",
-	"smtp_host":              "",
-	"smtp_port":              "587",
-	"smtp_tls":               "starttls",
-	"smtp_user":              "",
-	"smtp_pass":              "",
-	"smtp_from":              "",
-	"smtp_to":                "",
-	"email_subject":          defaultSubject,
-	"email_html":             defaultEmailHTML,
-	"status_enabled":         "false",
-	"status_title":           "Homelab",
-	"status_description":     "",
-	"dashboard_layout":       "",
-	"email_mode":             "blocks",
-	"email_blocks":           defaultEmailBlocks,
-	"status_layout":          "",
-	"api_enabled":            "false",
-	"api_cors_origins":       "",
-	"agent_hub_url":          "",
-	"timezone":               defaultTimezone,
-	"report_monthly_enabled": "false",
+	"agent_interval_s":        "30",
+	"retention_metrics_days":  "30",
+	"retention_results_days":  "30",
+	"retention_daily_days":    "365",
+	"notify_window_s":         "60",
+	"smtp_enabled":            "false",
+	"smtp_host":               "",
+	"smtp_port":               "587",
+	"smtp_tls":                "starttls",
+	"smtp_user":               "",
+	"smtp_pass":               "",
+	"smtp_from":               "",
+	"smtp_to":                 "",
+	"email_subject":           defaultSubject,
+	"email_html":              defaultEmailHTML,
+	"status_enabled":          "false",
+	"status_title":            "Homelab",
+	"status_description":      "",
+	"dashboard_layout":        "",
+	"email_mode":              "blocks",
+	"email_blocks":            defaultEmailBlocks,
+	"status_layout":           "",
+	"api_enabled":             "false",
+	"api_cors_origins":        "",
+	"agent_hub_url":           "",
+	"timezone":                defaultTimezone,
+	"notify_security_updates": "true",
+	"notify_reboot":           "true",
+	"notify_smart_level":      DiskReplace,
+	"notify_docker_updates":   "false",
+	"report_monthly_enabled":  "false",
 }
 
 var intSettings = map[string][2]int{
@@ -132,7 +136,10 @@ func validateSettings(in map[string]string) string {
 			return "Chaque origine CORS doit ressembler à https://gestion.example.fr"
 		}
 	}
-	for _, k := range []string{"smtp_enabled", "status_enabled", "api_enabled", "report_monthly_enabled"} {
+	if v, ok := in["notify_smart_level"]; ok && v != DiskWatch && v != DiskReplace && v != DiskFailing && v != "off" {
+		return "Le seuil d'alerte SMART doit être watch, replace, failing ou off"
+	}
+	for _, k := range []string{"smtp_enabled", "status_enabled", "api_enabled", "report_monthly_enabled", "notify_security_updates", "notify_reboot", "notify_docker_updates"} {
 		if v, ok := in[k]; ok && v != "true" && v != "false" {
 			return k + " doit valoir true ou false"
 		}
