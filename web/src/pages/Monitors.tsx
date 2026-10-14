@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 import { api, certDays, fmtAgo, fmtDate, fmtMs, statusLabel, type Monitor, type MonitorInput, type MonitorType, type Series } from "../api";
-import { Alert, Button, Card, Chart, Dialog, Field, Link, Segmented, StatusBadge, Switch, UptimeBars, navigate, usePoll, useToast } from "../ui";
+import { Alert, Button, Card, Chart, Dialog, Field, Link, Segmented, StatusBadge, Switch, UptimeBars, navigate, usePoll, useToast, fmtLatency } from "../ui";
 
 const TYPES: Record<MonitorType, string> = { http: "HTTP(S)", tcp: "Port TCP", dns: "DNS", ssl: "Certificat SSL" };
 const TARGET_HINT: Record<MonitorType, [string, string]> = {
@@ -163,7 +163,7 @@ type Range = "1h" | "24h" | "7d" | "30d" | "90d";
 export function MonitorDetailPage({ id }: { id: number }) {
   const mon = usePoll(() => api.get<Monitor>(`/api/monitors/${id}`), 15000, [id]);
   const [range, setRange] = useState<Range>("24h");
-  const res = usePoll(() => api.get<Series & { recent: { ts: number; status: Monitor["status"]; latency_ms: number | null; message: string }[] }>(`/api/monitors/${id}/results?range=${range}`), 30000, [id, range]);
+  const res = usePoll(() => api.get<Series>(`/api/monitors/${id}/results?range=${range}`), 30000, [id, range]);
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const toast = useToast();
@@ -200,29 +200,19 @@ export function MonitorDetailPage({ id }: { id: number }) {
             <span className="small muted">Expire le {fmtDate(m.cert_expires_at!)} · avertissement {m.config.warn_days ?? 14} j avant</span>
           </div>
         ) : null}
-        <div className="card kpi"><span className="label">Dernière vérification</span><span className="value" style={{ fontSize: "var(--text-lg)" }}>{fmtAgo(m.last_check / 1000)}</span><span className="small muted">{m.message}</span></div>
+        <div className="card kpi">
+          <span className="label">Dernière vérification</span>
+          <span className="value" style={{ fontSize: "var(--text-lg)", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {m.last_check ? fmtAgo(m.last_check / 1000) : "Jamais"}{m.last_check > 0 && <StatusBadge status={m.status} />}
+          </span>
+          {m.last_check > 0 && <span className="small muted num">{new Date(m.last_check).toLocaleString("fr-FR")}</span>}
+          {m.message && <span className="small muted">{m.message}</span>}
+        </div>
       </div>
       <Card title="Latence" actions={<Segmented label="Période" value={range} onChange={setRange} options={[["1h", "1 h"], ["24h", "24 h"], ["7d", "7 j"], ["30d", "30 j"], ["90d", "90 j"]]} />}>
-        <Chart t={res.data?.t ?? []} series={series} format={(v) => `${Math.round(v)} ms`} height={260} />
+        <Chart t={res.data?.t ?? []} series={series} format={fmtLatency} height={260} />
       </Card>
       <Card title="Disponibilité sur 90 jours"><UptimeBars days={m.days ?? []} /></Card>
-      <Card title="Dernières vérifications" flush>
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>Date</th><th>État</th><th className="r">Latence</th><th>Détail</th></tr></thead>
-            <tbody>
-              {res.data?.recent.map((r) => (
-                <tr key={r.ts}>
-                  <td className="muted num">{new Date(r.ts).toLocaleString("fr-FR")}</td>
-                  <td><StatusBadge status={r.status} /></td>
-                  <td className="r">{fmtMs(r.latency_ms)}</td>
-                  <td className="wrap small">{r.message}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
       {editing && <MonitorDialog monitor={m} onClose={(changed, saved) => { setEditing(false); if (changed && saved) mon.setData(saved); }} />}
       <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} title={`Supprimer ${m.name}`} description="La sonde et son historique seront supprimés définitivement."
         footer={<><Button onClick={() => setConfirmDelete(false)}>Annuler</Button>

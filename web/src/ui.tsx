@@ -287,6 +287,9 @@ export function UptimeBars({ days }: { days: Day[] }) {
 
 const cssVar = (n: string) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
+/** Latency axis/tooltip format: one decimal below 10 ms so small values stay distinct. */
+export const fmtLatency = (v: number) => (v < 10 ? `${v.toFixed(1).replace(".", ",")} ms` : `${Math.round(v)} ms`);
+
 export interface ChartSeries { label: string; values: (number | null)[] }
 
 /** Hover tooltip listing every series at the cursor's x; replaces uPlot's crosshair. */

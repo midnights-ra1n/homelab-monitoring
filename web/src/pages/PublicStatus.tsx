@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { api, fmtDate, type Day, type Host, type Monitor, type Status } from "../api";
 import { BlockEditor, type BlockType } from "../blocks";
-import { Alert, Button, Card, Chart, Field, StatusBadge, StatusIcon, Switch, UptimeBars, statusTone, usePoll, useTheme, useToast } from "../ui";
+import { Alert, Button, Card, Chart, Field, StatusBadge, StatusIcon, Switch, UptimeBars, statusTone, usePoll, useTheme, useToast, fmtLatency } from "../ui";
 
 type ItemRef = { kind: "host" | "monitor"; id: number };
 export interface StatusBlock {
@@ -26,7 +26,7 @@ function LatencyBlock({ b }: { b: StatusBlock }) {
   const d = b.data as { t: number[]; latency: (number | null)[]; name: string } | undefined;
   const series = useMemo(() => [{ label: d?.name ?? "Latence", values: d?.latency ?? [] }], [d]);
   if (!d) return null;
-  return <Card title={b.title || `Latence · ${d.name}`}><Chart t={d.t} series={series} format={(v) => `${Math.round(v)} ms`} height={200} /></Card>;
+  return <Card title={b.title || `Latence · ${d.name}`}><Chart t={d.t} series={series} format={fmtLatency} height={200} /></Card>;
 }
 
 /** Renders a resolved status page; shared by the public page and the editor preview. */

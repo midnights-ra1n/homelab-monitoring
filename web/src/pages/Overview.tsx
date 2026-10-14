@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, Eye, EyeOff, Columns2, Square } from "lucide-react"
 import { api, certDays, fmtMs, fmtPct, pct, statusLabel, type Overview, type Status } from "../api";
 import { updateTotals } from "./Updates";
 import { AgentVersion } from "./AgentVersion";
-import { Alert, Button, Card, Chart, IconButton, Kpi, Link, StatusBadge, StatusIcon, UptimeBars, navigate, usePoll, useToast } from "../ui";
+import { Alert, Button, Card, Chart, IconButton, Kpi, Link, StatusBadge, StatusIcon, UptimeBars, navigate, usePoll, useToast, fmtLatency } from "../ui";
 
 type WidgetId = "kpis" | "problems" | "latency" | "updates" | "uptime" | "hosts";
 interface Widget { id: WidgetId; visible: boolean; full: boolean }
@@ -172,7 +172,7 @@ function WidgetView({ id, data }: { id: WidgetId; data: Overview }) {
     case "latency":
       return (
         <Card title="Latence des sondes" sub="Moyenne par tranche de 5 minutes, dernières 24 h">
-          <Chart t={latency.t} series={latency.series} format={(v) => `${Math.round(v)} ms`} />
+          <Chart t={latency.t} series={latency.series} format={fmtLatency} />
         </Card>
       );
     case "uptime":
