@@ -2,11 +2,12 @@
 :root {
   --brand: #3fbfa6;
   --brand-mark-bg: #191e27; /* logo background, identical in every theme */
+  --brand-muted: #57cfb5; /* second slash of the logo (charter: accent muted, light) */
   --font-sans: "Geist Variable", "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, Menlo, monospace;
 
   --bg-app: #f2f6f8; --bg-surface: #ffffff; --bg-surface-raised: #ffffff;
-  --bg-subtle: #f8fafc; --bg-muted: #e7ecef; --bg-sidebar: #ffffff; --bg-field: #ffffff;
+  --bg-subtle: #f8fafc; --bg-muted: #e7ecef; --bg-sidebar: #f2f6f8; --bg-field: #ffffff;
   --bg-hover: rgba(19,27,31,.05); --bg-pressed: rgba(19,27,31,.09);
   --bg-selected: #eafcf6; --bg-nav-active: #e7ecef;
   --bg-inverse: #131b1f; --bg-overlay: rgba(9,15,19,.48);
@@ -46,8 +47,9 @@
 }
 
 [data-theme="dark"] {
+  --brand-muted: #136656;
   --bg-app: #0e1519; --bg-surface: #131b1f; --bg-surface-raised: #1c2429;
-  --bg-subtle: #10181c; --bg-muted: #1c2429; --bg-sidebar: #090f13; --bg-field: #131b1f;
+  --bg-subtle: #10181c; --bg-muted: #1c2429; --bg-sidebar: #0e1519; --bg-field: #131b1f;
   --bg-hover: rgba(231,236,239,.06); --bg-pressed: rgba(231,236,239,.10);
   --bg-selected: rgba(63,191,166,.14); --bg-nav-active: #1c2429;
   --bg-inverse: #e7ecef; --bg-overlay: rgba(3,6,8,.66);
@@ -80,7 +82,7 @@
 /* Midnights Mint — from noe-georget.fr/graphique, mapped onto the same semantic tokens. */
 [data-palette="mint"] {
   --bg-app: #e4e8ef; --bg-surface: #edf0f6; --bg-surface-raised: #f4f7fb;
-  --bg-subtle: #e4e8ef; --bg-muted: #d8dde5; --bg-sidebar: #edf0f6; --bg-field: #fcfdff;
+  --bg-subtle: #e4e8ef; --bg-muted: #d8dde5; --bg-sidebar: #e4e8ef; --bg-field: #fcfdff;
   --bg-hover: rgba(22,27,36,.05); --bg-pressed: rgba(22,27,36,.09);
   --bg-selected: #0fb79624; --bg-nav-active: #d8dde5;
   --bg-inverse: #252c37; --bg-overlay: rgba(22,27,36,.48);
@@ -112,7 +114,7 @@
 
 [data-palette="mint"][data-theme="dark"] {
   --bg-app: #191e27; --bg-surface: #212730; --bg-surface-raised: #2a313c;
-  --bg-subtle: #191e27; --bg-muted: #2a313c; --bg-sidebar: #0f131a; --bg-field: #13171f;
+  --bg-subtle: #191e27; --bg-muted: #2a313c; --bg-sidebar: #191e27; --bg-field: #13171f;
   --bg-hover: rgba(240,244,249,.06); --bg-pressed: rgba(240,244,249,.10);
   --bg-selected: #1ccaa83d; --bg-nav-active: #2a313c;
   --bg-inverse: #f0f4f9; --bg-overlay: rgba(15,19,26,.70);

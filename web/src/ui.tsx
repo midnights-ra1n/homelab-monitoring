@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import uPlot from "uplot";
-import { AlertTriangle, CheckCircle2, CircleAlert, CircleHelp, CircleStop, Copy, Info, OctagonX, Package, Wrench, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleAlert, CircleHelp, CircleStop, Copy, Info, LogOut, OctagonX, Package, Settings, Wrench, X } from "lucide-react";
 import { statusLabel, type Day, type Status } from "./api";
 
 /* ---------- Routing (history API; the server serves the app shell on every path) ---------- */
@@ -24,6 +24,7 @@ export function usePath() {
 export function Link({ to, children, ...rest }: { to: string; children: ReactNode } & React.AnchorHTMLAttributes<HTMLAnchorElement>) {
   return (
     <a href={to} {...rest} onClick={(e) => {
+      rest.onClick?.(e);
       if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
       e.preventDefault();
       navigate(to);
@@ -397,4 +398,59 @@ export function Chart({ t, series, format, height = 220, max }: {
   }, [t, series, height, max, themeTick]);
   if (!t.length) return <div className="empty small">Aucune donnée sur cette période</div>;
   return <div ref={el} className="chart" />;
+}
+
+/* ---------- Brand and user menu ---------- */
+
+/** Brand mark from the graphic charter (two slashes, noe-georget.fr/graphique) and the name. */
+export function Logo() {
+  return (
+    <span className="logo">
+      <svg viewBox="248 128 528 768" aria-hidden className="logo-mark">
+        <path d="M504 128L312 896H248L440 128H504Z" fill="var(--brand-muted)" />
+        <path d="M776 128L584 896H360L552 128H776Z" fill="var(--brand)" />
+      </svg>
+      <span className="logo-text">homelab<span className="logo-dot">.</span></span>
+    </span>
+  );
+}
+
+const initials = (name: string) => (name.replace(/[^\p{L}\p{N}]/gu, "").slice(0, 2) || "?").toUpperCase();
+
+/** Avatar button opening a small menu: theme, settings, sign out. */
+export function UserMenu({ username, theme, onLogout }: {
+  username: string; theme: { mode: ThemeMode; setMode: (m: ThemeMode) => void }; onLogout: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpen(false); button.current?.focus(); } };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+  const modes: [ThemeMode, string][] = [["system", "Auto"], ["dark", "Sombre"], ["light", "Clair"]];
+  return (
+    <div className="user-menu" ref={ref}>
+      {open && (
+        <div className="user-popover" role="menu" aria-label="Compte">
+          <div className="user-popover-head">Connecté · <span>{username}</span></div>
+          <div className="pill-group" role="radiogroup" aria-label="Thème">
+            {modes.map(([m, l]) => (
+              <button key={m} type="button" role="radio" aria-checked={theme.mode === m} onClick={() => theme.setMode(m)}>{l}</button>
+            ))}
+          </div>
+          <Link to="/settings" className="user-popover-item" role="menuitem" onClick={() => setOpen(false)}><Settings size={18} aria-hidden />Paramètres</Link>
+          <button type="button" className="user-popover-item" role="menuitem" onClick={() => { setOpen(false); onLogout(); }}><LogOut size={18} aria-hidden />Se déconnecter</button>
+        </div>
+      )}
+      <button ref={button} type="button" className="user-button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <span className="avatar" aria-hidden>{initials(username)}</span>
+        <span className="ellipsis">{username}</span>
+      </button>
+    </div>
+  );
 }

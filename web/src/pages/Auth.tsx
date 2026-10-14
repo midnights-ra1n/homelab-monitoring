@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { Activity } from "lucide-react";
 import { api } from "../api";
-import { Alert, Button, Field } from "../ui";
+import { Alert, Button, Field, Logo } from "../ui";
 
 export function AuthPage({ setup, onDone }: { setup: boolean; onDone: () => void }) {
   const [form, setForm] = useState({ username: "", password: "" });
@@ -28,7 +27,7 @@ export function AuthPage({ setup, onDone }: { setup: boolean; onDone: () => void
     <div className="auth">
       <form className="card" onSubmit={submit} noValidate>
         <div className="card-body form">
-          <div className="brand" style={{ margin: 0, padding: 0 }}><span className="brand-mark"><Activity size={16} aria-hidden /></span>Homelab Monitoring</div>
+          <div className="brand" style={{ margin: 0, padding: 0 }}><Logo /><span className="brand-sub"><span>Monitoring</span></span></div>
           <div>
             <h1 style={{ fontSize: "var(--text-xl)", lineHeight: "28px" }}>{setup ? "Créer le compte administrateur" : "Se connecter"}</h1>
             <p className="small muted" style={{ marginTop: 4 }}>
