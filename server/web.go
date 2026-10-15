@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"io/fs"
+	"mime"
 	"net/http"
 	"path"
 	"strings"
@@ -12,6 +13,9 @@ import (
 //
 //go:embed all:web/dist
 var webFS embed.FS
+
+// Go's table lacks the PWA manifest type; browsers expect it to install the app.
+func init() { _ = mime.AddExtensionType(".webmanifest", "application/manifest+json") }
 
 func (s *Server) staticHandler() http.Handler {
 	dist, _ := fs.Sub(webFS, "web/dist")

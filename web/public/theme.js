@@ -1,8 +1,10 @@
-// Applied before first paint to avoid a theme flash. Kept external because the CSP forbids inline scripts.
+// Applies the remembered theme and sidebar before first paint (no flash), as homelab-management does.
+// Kept external because the CSP forbids inline scripts. Sidebar: remembered choice, else rail on tablets (640–1023 px).
 (function () {
-  var d = document.documentElement, mode = "system", palette = "classic";
-  try { mode = localStorage.getItem("hlm-theme") || mode; palette = localStorage.getItem("hlm-palette") || palette; } catch (e) {}
-  var dark = mode === "dark" || (mode === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
-  d.dataset.theme = dark ? "dark" : "light";
-  d.dataset.palette = palette;
+  try {
+    var d = document.documentElement, t = localStorage.getItem("hlm-theme");
+    if (t === "dark" || t === "light") d.dataset.theme = t;
+    var s = localStorage.getItem("hlm-sidebar");
+    if (s ? s === "rail" : innerWidth >= 640 && innerWidth < 1024) d.dataset.sidebar = "rail";
+  } catch (e) {}
 })();

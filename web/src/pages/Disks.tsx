@@ -1,6 +1,6 @@
-import { CheckCircle2, CircleAlert, HardDrive } from "lucide-react";
+import { CircleAlert, CircleCheck, HardDrive, TriangleAlert } from "lucide-react";
 import { api, fmtAgo, fmtBytes, fmtNum } from "../api";
-import { Alert, Card, Kpi, Link, Progress, usePoll, BadgeIcon } from "../ui";
+import { Alert, Badge, Card, EmptyState, Link, Meter, PageHeader, SECTIONS, STAT_GRID, SectionTitle, Skeleton, Stat, StatusIcon, TONE_VAR, type Tone, usePoll } from "../ui";
 
 export type DiskHealthLevel = "good" | "watch" | "replace" | "failing";
 export interface Disk {
@@ -12,11 +12,11 @@ export interface Disk {
 }
 export interface HostDisks { host_id: number; host: string; disks: Disk[]; error?: string; collected_at: number }
 
-const HEALTH: Record<DiskHealthLevel, [string, string]> = {
-  good: ["Bon état", "s-operational"],
-  watch: ["À surveiller", "s-degraded"],
-  replace: ["À remplacer", "s-minor_outage"],
-  failing: ["Défaillant", "s-major_outage"],
+const HEALTH: Record<DiskHealthLevel, [string, Tone]> = {
+  good: ["Bon état", "green"],
+  watch: ["À surveiller", "yellow"],
+  replace: ["À remplacer", "orange"],
+  failing: ["Défaillant", "red"],
 };
 const KIND: Record<Disk["kind"], string> = { hdd: "Disque dur", ssd: "SSD SATA", nvme: "SSD NVMe" };
 
@@ -31,39 +31,48 @@ export function fmtLife(days: number | null) {
 }
 
 export function DiskCard({ d }: { d: Disk }) {
-  const [label, cls] = HEALTH[d.health];
+  const [label, tone] = HEALTH[d.health];
   const years = d.power_on_hours != null ? d.power_on_hours / 8760 : null;
+  const facts: [string, string][] = [
+    ["Durée restante", fmtLife(d.life_left_days)],
+    ...(d.wear_used_pct != null ? [["Usure", `${fmtNum(d.wear_used_pct, 0)} %`] as [string, string]] : []),
+    ...(years != null ? [["Fonctionnement", years < 1 ? `${fmtNum(d.power_on_hours, 0)} h` : `${fmtNum(years, 1)} an${years >= 2 ? "s" : ""}`] as [string, string]] : []),
+    ...(d.temperature_c != null ? [["Température", `${fmtNum(d.temperature_c, 0)} °C`] as [string, string]] : []),
+    ...(d.data_written_bytes != null ? [["Données écrites", fmtBytes(d.data_written_bytes)] as [string, string]] : []),
+    ...(d.serial ? [["N° de série", d.serial] as [string, string]] : []),
+  ];
   return (
-    <section className="card">
-      <div className="card-header">
-        <HardDrive size={20} aria-hidden className="tertiary" />
-        <div>
-          <h3 className="ellipsis">{d.model || "Disque"}</h3>
-          <div className="sub">{KIND[d.kind]} · {fmtBytes(d.capacity_bytes)} · <span className="mono">{d.name}</span></div>
+    <Card className="p-5" style={tone === "red" || tone === "orange" ? { borderColor: `color-mix(in srgb, ${TONE_VAR[tone]} 40%, var(--mm-border))` } : undefined}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-text"><HardDrive size={16} aria-hidden /></span>
+          <div className="min-w-0">
+            <p className="truncate font-semibold text-h1">{d.model || "Disque"}</p>
+            <p className="truncate font-mono text-xs text-meta">{KIND[d.kind]} · {fmtBytes(d.capacity_bytes)} · {d.name}</p>
+          </div>
         </div>
-        <span className={`badge ${cls}`}><BadgeIcon cls={cls} />{label}</span>
+        <Badge tone={tone} dot>{label}</Badge>
       </div>
-      <div className="card-body form" style={{ paddingTop: 0, gap: 12 }}>
-        <p style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-          {d.usable ? <CheckCircle2 size={18} aria-hidden style={{ color: "var(--success-solid)", flex: "none" }} /> : <CircleAlert size={18} aria-hidden style={{ color: "var(--danger-solid)", flex: "none" }} />}
-          <span><strong style={{ fontWeight: 600 }}>{d.usable ? "Utilisable" : "Ne plus compter sur ce disque"}</strong> — {d.summary}</span>
-        </p>
-        <Progress label="Santé globale" value={d.score} text={`${d.score} / 100`} higherIsBetter />
-        <dl className="kv">
-          <dt>Durée restante estimée</dt><dd><strong style={{ fontWeight: 600 }}>{fmtLife(d.life_left_days)}</strong><div className="xs tertiary">{d.life_basis}</div></dd>
-          {d.wear_used_pct != null && <><dt>Usure</dt><dd className="num">{fmtNum(d.wear_used_pct, 0)} %</dd></>}
-          {years != null && <><dt>Fonctionnement</dt><dd className="num">{years < 1 ? `${fmtNum(d.power_on_hours, 0)} h` : `${fmtNum(years, 1)} an${years >= 2 ? "s" : ""}`}</dd></>}
-          {d.temperature_c != null && <><dt>Température</dt><dd className="num">{fmtNum(d.temperature_c, 0)} °C</dd></>}
-          {d.data_written_bytes != null && <><dt>Données écrites</dt><dd className="num">{fmtBytes(d.data_written_bytes)}</dd></>}
-          {d.serial && <><dt>N° de série</dt><dd className="mono">{d.serial}</dd></>}
-        </dl>
-        {d.reasons.length > 0 && (
-          <ul className="small" style={{ margin: 0, paddingLeft: 18, color: "var(--text-secondary)" }}>
-            {d.reasons.map((r) => <li key={r}>{r}</li>)}
-          </ul>
-        )}
-      </div>
-    </section>
+      <p className="mt-4 flex items-start gap-2 text-sm text-body">
+        <StatusIcon kind={d.usable ? "ok" : "down"} className="mt-0.5" />
+        <span><span className="font-medium text-h1">{d.usable ? "Utilisable" : "Ne plus compter sur ce disque"}</span> — {d.summary}</span>
+      </p>
+      <Meter className="mt-4" label="Santé globale" value={d.score} detail={`${d.score} / 100`} tone={d.score >= 75 ? "green" : d.score >= 50 ? "yellow" : "red"} />
+      <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+        {facts.map(([k, v]) => (
+          <div key={k} className="min-w-0">
+            <dt className="font-mono text-[0.7rem] uppercase tracking-[0.14em] text-meta">{k}</dt>
+            <dd className="mt-0.5 truncate font-mono text-h2" title={v}>{v}</dd>
+          </div>
+        ))}
+      </dl>
+      {d.life_basis && <p className="mt-3 text-xs text-meta">{d.life_basis}</p>}
+      {d.reasons.length > 0 && (
+        <ul className="mt-3 grid list-disc gap-1 pl-5 text-sm text-body">
+          {d.reasons.map((r) => <li key={r}>{r}</li>)}
+        </ul>
+      )}
+    </Card>
   );
 }
 
@@ -72,28 +81,35 @@ export function DisksPage() {
   const all = (data ?? []).flatMap((h) => h.disks);
   const count = (l: DiskHealthLevel) => all.filter((d) => d.health === l).length;
   return (
-    <div className="page">
-      <div className="page-header"><div><h1>Disques</h1><p className="muted">Santé SMART des disques durs et SSD, relevée toutes les heures. Les durées restantes sont des estimations.</p></div></div>
-      {error && <Alert tone="danger" title="Impossible de charger les disques">{error}</Alert>}
+    <>
+      <PageHeader title="Disques" description="Santé SMART des disques durs et SSD, relevée toutes les heures. Les durées restantes sont des estimations." />
+      {error && <Alert kind="error" title="Impossible de charger les disques" className="mb-6">{error}</Alert>}
+      {!data && !error && <Skeleton className="h-64" />}
       {data && (
-        <div className="grid kpis">
-          <Kpi label="Disques suivis" value={<span className="num">{all.length}</span>} />
-          <Kpi label="Bon état" value={<span className="num">{count("good")}</span>} />
-          <Kpi label="À surveiller" value={<span className="num">{count("watch")}</span>} />
-          <Kpi label="À remplacer ou défaillants" value={<span className="num">{count("replace") + count("failing")}</span>} />
+        <div className={SECTIONS}>
+          <div className={STAT_GRID}>
+            <Stat label="Disques suivis" value={all.length} icon={<HardDrive size={16} />} />
+            <Stat label="Bon état" value={count("good")} icon={<CircleCheck size={16} />} tone="green" />
+            <Stat label="À surveiller" value={count("watch")} icon={<TriangleAlert size={16} />} tone={count("watch") ? "yellow" : undefined} />
+            <Stat label="À remplacer ou défaillants" value={count("replace") + count("failing")} icon={<CircleAlert size={16} />} tone={count("replace") + count("failing") ? "red" : undefined} />
+          </div>
+          {data.length === 0 && (
+            <EmptyState icon={<HardDrive size={20} />} title="Aucune donnée SMART">
+              L'agent installe smartmontools et relève les disques toutes les heures ; les machines virtuelles n'exposent généralement pas de SMART.
+            </EmptyState>
+          )}
+          {data.map((h) => (
+            <section key={h.host_id} aria-label={h.host}>
+              <SectionTitle actions={<span className="font-mono text-xs text-meta">relevé {fmtAgo(h.collected_at)}</span>}>
+                <Link to={`/hosts/${h.host_id}`} className="text-inherit no-underline hover:text-accent-text">{h.host}</Link>
+              </SectionTitle>
+              {h.error && <Alert kind="info" title={h.error} className="mb-4" />}
+              {!h.error && h.disks.length === 0 && <p className="text-sm text-meta">Aucun disque compatible SMART (machine virtuelle ?).</p>}
+              <div className="grid gap-4 lg:grid-cols-2 xl:gap-6">{h.disks.map((d) => <DiskCard key={d.name + d.serial} d={d} />)}</div>
+            </section>
+          ))}
         </div>
       )}
-      {data?.length === 0 && (
-        <Card><div className="empty small">Aucune donnée SMART. L'agent installe smartmontools et relève les disques toutes les heures ; les machines virtuelles n'exposent généralement pas de SMART.</div></Card>
-      )}
-      {data?.map((h) => (
-        <div key={h.host_id} className="form" style={{ gap: 8 }}>
-          <h2 style={{ fontSize: "var(--text-base)" }}><Link to={`/hosts/${h.host_id}`}>{h.host}</Link> <span className="small muted" style={{ fontWeight: 400 }}>· relevé {fmtAgo(h.collected_at)}</span></h2>
-          {h.error && <Alert tone="info" title={h.error} />}
-          {!h.error && h.disks.length === 0 && <p className="small muted">Aucun disque compatible SMART (machine virtuelle ?).</p>}
-          <div className="grid cols-2">{h.disks.map((d) => <DiskCard key={d.name + d.serial} d={d} />)}</div>
-        </div>
-      ))}
-    </div>
+    </>
   );
 }

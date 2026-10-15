@@ -16,7 +16,7 @@ Supervision légère d'un homelab : un **hub** (Go + SQLite + interface React, l
 - E-mail d'alerte composé par blocs (en-tête, résumé, événements, texte, bouton, pied de page) ou en HTML avancé.
 - Rapport mensuel (disponibilité moyenne, latence, jours d'incident, hôtes, certificats, mises à jour, disques), consultable, imprimable et envoyé le 1er du mois.
 - API REST `/api/v1` activable, jetons à scopes et date d'expiration : voir [docs/API.md](docs/API.md).
-- Tableau de bord personnalisable, thèmes Midnights Classic et Midnights Mint (clair/sombre), PWA installable.
+- Tableau de bord personnalisable, système de design Midnights Classic (sombre, clair ou auto), PWA installable.
 - Rétention configurable, nettoyage et compactage de la base, import/export JSON des réglages, sondes et métriques.
 
 ## Démarrer le hub

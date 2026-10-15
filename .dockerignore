@@ -4,3 +4,12 @@ rust-agent/target
 server/web/dist
 **/.DS_Store
 *.pdf
+# Local hub data (database, signing key) and design sources never go into the build context.
+**/data
+*.db
+*.db-wal
+*.db-shm
+*.pem
+Midnights Classic
+*.svg
+!web/**/*.svg

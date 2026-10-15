@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api";
-import { Alert, Button, Field, Logo } from "../ui";
+import { LogIn, UserPlus } from "lucide-react";
+import { Alert, Button, Field, Logo, inputClass } from "../ui";
 
 export function AuthPage({ setup, onDone }: { setup: boolean; onDone: () => void }) {
   const [form, setForm] = useState({ username: "", password: "" });
@@ -24,26 +25,30 @@ export function AuthPage({ setup, onDone }: { setup: boolean; onDone: () => void
   };
 
   return (
-    <div className="auth">
-      <form className="card" onSubmit={submit} noValidate>
-        <div className="card-body form">
-          <div className="brand" style={{ margin: 0, padding: 0 }}><Logo /><span className="brand-sub"><span>Monitoring</span></span></div>
-          <div>
-            <h1 style={{ fontSize: "var(--text-xl)", lineHeight: "28px" }}>{setup ? "Créer le compte administrateur" : "Se connecter"}</h1>
-            <p className="small muted" style={{ marginTop: 4 }}>
-              {setup ? "Premier démarrage : ce compte sera le seul administrateur." : "Accès réservé à l'administrateur."}
-            </p>
-          </div>
-          {error && <Alert tone="danger" title={error} />}
-          <Field label="Nom d'utilisateur" htmlFor="user">
-            <input id="user" className="input" autoComplete="username" value={form.username} onChange={set("username")} required />
-          </Field>
-          <Field label="Mot de passe" htmlFor="pw" hint={setup ? "12 caractères minimum" : undefined}>
-            <input id="pw" className="input" type="password" autoComplete={setup ? "new-password" : "current-password"} value={form.password} onChange={set("password")} required />
-          </Field>
-          <Button type="submit" variant="primary" size="lg" loading={busy}>{setup ? "Créer le compte" : "Se connecter"}</Button>
+    <div className="flex min-h-screen flex-col items-center justify-center px-5 py-16">
+      <div className="w-full max-w-md">
+        <div className="mb-10 flex justify-center"><Logo /></div>
+        <div className="rounded-3xl border border-line-subtle bg-box p-7 sm:p-8">
+          <h1 className="text-3xl font-bold tracking-tight text-h1">
+            {setup ? <>Bienvenue au <span className="text-accent-text">labo</span></> : <>Bon retour <span className="text-accent-text">au labo</span></>}
+          </h1>
+          <p className="mb-8 mt-3 text-sm leading-relaxed text-body">
+            {setup ? "Premier démarrage : crée le compte administrateur, ce sera le seul." : "Connecte-toi pour superviser ton homelab."}
+          </p>
+          <form className="grid gap-5" onSubmit={submit} noValidate>
+            {error && <Alert kind="error">{error}</Alert>}
+            <Field label="Identifiant" htmlFor="user" required>
+              <input id="user" className={inputClass} autoComplete="username" autoFocus value={form.username} onChange={set("username")} required />
+            </Field>
+            <Field label="Mot de passe" htmlFor="pw" hint={setup ? "12 caractères minimum" : undefined} required>
+              <input id="pw" className={inputClass} type="password" autoComplete={setup ? "new-password" : "current-password"} value={form.password} onChange={set("password")} required />
+            </Field>
+            <Button type="submit" className="mt-2 w-full" loading={busy} icon={setup ? <UserPlus size={16} /> : <LogIn size={16} />}>
+              {setup ? "Créer le compte et commencer" : "Se connecter"}
+            </Button>
+          </form>
         </div>
-      </form>
+      </div>
     </div>
   );
 }

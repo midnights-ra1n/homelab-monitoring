@@ -1,7 +1,7 @@
 // Caches the app shell so the PWA opens offline; API calls always go to the network.
-const CACHE = "hlm-shell-v1";
+const CACHE = "hlm-shell-v2";
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["/", "/theme.js", "/icon.svg", "/manifest.webmanifest"])));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["/", "/theme.js", "/icon.svg", "/favicon.ico", "/manifest.webmanifest"])));
   self.skipWaiting();
 });
 self.addEventListener("activate", (e) => {

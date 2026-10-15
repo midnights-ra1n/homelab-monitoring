@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, GripVertical, Plus, Trash2 } from "lucide-react";
-import { Button, IconButton } from "./ui";
+import { Button, IconButton, cn } from "./ui";
 
 export interface Block { id: string; type: string }
 
@@ -43,13 +43,13 @@ export function BlockEditor<T extends Block>({ blocks, onChange, types, renderFi
   };
 
   return (
-    <div className="block-editor">
-      <ol className="block-list" aria-label="Blocs">
+    <div className="grid gap-3">
+      <ol className="grid gap-2" aria-label="Blocs">
         {blocks.map((b, i) => {
           const isSel = b.id === selected;
           return (
             <li key={b.id}
-              className={`block-item${isSel ? " selected" : ""}${overId === b.id && dragId !== b.id ? " drop-target" : ""}`}
+              className={cn("rounded-xl border bg-page transition-colors", isSel ? "border-line-accent" : "border-line-subtle", overId === b.id && dragId !== b.id && "shadow-[0_-2px_0_var(--mm-accent)]")}
               draggable
               onDragStart={(e) => { setDragId(b.id); e.dataTransfer.effectAllowed = "move"; }}
               onDragOver={(e) => { e.preventDefault(); setOverId(b.id); }}
@@ -61,32 +61,32 @@ export function BlockEditor<T extends Block>({ blocks, onChange, types, renderFi
                 setDragId(undefined); setOverId(undefined);
               }}
               onDragEnd={() => { setDragId(undefined); setOverId(undefined); }}>
-              <div className="block-head">
-                <GripVertical size={16} className="tertiary" aria-hidden style={{ cursor: "grab", flex: "none" }} />
-                <button type="button" className="block-title" aria-expanded={isSel} onClick={() => setSelected(isSel ? undefined : b.id)}>
-                  <span className="xs tertiary">{types[b.type]?.label ?? b.type}</span>
-                  <span className="ellipsis">{title(b)}</span>
+              <div className="flex items-center gap-0.5 py-1 pl-3 pr-1">
+                <GripVertical size={16} className="shrink-0 cursor-grab text-meta" aria-hidden />
+                <button type="button" className="flex min-w-0 flex-1 flex-col items-start rounded-lg px-2 py-1.5 text-left hover:bg-hover" aria-expanded={isSel} onClick={() => setSelected(isSel ? undefined : b.id)}>
+                  <span className="mm-label-caps">{types[b.type]?.label ?? b.type}</span>
+                  <span className="w-full truncate text-sm text-h1">{title(b)}</span>
                 </button>
-                <IconButton label="Monter" icon={<ArrowUp />} className="sm" disabled={i === 0} onClick={() => move(i, i - 1)} />
-                <IconButton label="Descendre" icon={<ArrowDown />} className="sm" disabled={i === blocks.length - 1} onClick={() => move(i, i + 1)} />
-                <IconButton label="Supprimer le bloc" icon={<Trash2 />} className="sm" onClick={() => onChange(blocks.filter((x) => x.id !== b.id))} />
+                <IconButton label="Monter" icon={<ArrowUp size={15} />} disabled={i === 0} onClick={() => move(i, i - 1)} />
+                <IconButton label="Descendre" icon={<ArrowDown size={15} />} disabled={i === blocks.length - 1} onClick={() => move(i, i + 1)} />
+                <IconButton label="Supprimer le bloc" icon={<Trash2 size={15} />} onClick={() => onChange(blocks.filter((x) => x.id !== b.id))} />
               </div>
-              {isSel && <div className="block-fields form">{renderFields(b, update(b.id))}</div>}
+              {isSel && <div className="grid gap-4 border-t border-line-subtle p-4">{renderFields(b, update(b.id))}</div>}
             </li>
           );
         })}
       </ol>
       {adding ? (
-        <div className="block-palette">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-2">
           {Object.entries(types).map(([type, t]) => (
-            <button key={type} type="button" className="palette-item" onClick={() => add(type)}>
-              <strong>{t.label}</strong><span className="xs muted">{t.description}</span>
+            <button key={type} type="button" className="flex flex-col items-start gap-0.5 rounded-xl border border-dashed border-line-strong bg-box p-3 text-left transition-colors hover:border-accent hover:bg-accent-soft" onClick={() => add(type)}>
+              <span className="text-sm font-medium text-h1">{t.label}</span><span className="text-xs text-meta">{t.description}</span>
             </button>
           ))}
-          <Button size="sm" onClick={() => setAdding(false)}>Annuler</Button>
+          <Button variant="ghost" size="sm" className="self-center" onClick={() => setAdding(false)}>Annuler</Button>
         </div>
       ) : (
-        <Button icon={<Plus />} onClick={() => setAdding(true)}>Ajouter un bloc</Button>
+        <Button variant="secondary" className="w-fit" icon={<Plus size={16} />} onClick={() => setAdding(true)}>Ajouter un bloc</Button>
       )}
     </div>
   );

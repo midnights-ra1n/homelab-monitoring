@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { api, actionBusy, type Host, type HostActionName } from "../api";
-import { Button, useToast, BadgeIcon } from "../ui";
+import { Badge, Button, useToast } from "../ui";
 
 /** Sends an action to a host's agent; returns the updated host. */
 export function useHostAction(onDone?: (h: Host) => void) {
@@ -17,7 +17,7 @@ export function useHostAction(onDone?: (h: Host) => void) {
         : action === "update_container" ? `Mise à jour de ${target} lancée sur ${h.name}`
         : `Vérification lancée sur ${h.name}`);
     } catch (e) {
-      toast(`${h.name} : ${(e as Error).message}`);
+      toast(`${h.name} : ${(e as Error).message}`, "error");
     } finally {
       setBusy(undefined);
     }
@@ -25,19 +25,21 @@ export function useHostAction(onDone?: (h: Host) => void) {
   return { run, busy };
 }
 
-/** Installed agent version with an "up to date / update available" badge. */
-export function AgentVersion({ h, onUpdate, updating }: { h: Host; onUpdate?: () => void; updating?: boolean }) {
+/** Installed agent version with an "up to date / update available" badge; `compact` shows the badge only. */
+export function AgentVersion({ h, onUpdate, updating, compact }: { h: Host; onUpdate?: () => void; updating?: boolean; compact?: boolean }) {
   const v = h.info.agent_version;
-  if (!v) return <span className="tertiary">—</span>;
+  if (!v) return compact ? null : <span className="text-meta">—</span>;
   const pending = h.action?.action === "update_agent" && actionBusy(h);
+  const badge = !/^v\d+\.\d+\.\d+$/.test(v) ? <Badge>dev</Badge>
+    : h.agent_outdated ? <Badge tone="yellow" dot title={`Dernière version : ${h.agent_latest}`}>{h.agent_latest} disponible</Badge>
+    : h.agent_latest && !compact ? <Badge tone="green" dot>À jour</Badge> : null;
+  if (compact) return badge;
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-      <span className="mono small">{v}</span>
-      {!/^v\d+\.\d+\.\d+$/.test(v) ? <span className="badge">Développement</span>
-        : h.agent_outdated ? <span className="badge s-degraded" title={`Dernière version : ${h.agent_latest}`}><BadgeIcon cls="s-degraded" />{h.agent_latest} disponible</span>
-        : h.agent_latest ? <span className="badge s-operational"><BadgeIcon cls="s-operational" />À jour</span> : null}
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <span className="font-mono text-xs text-h2">{v}</span>
+      {badge}
       {onUpdate && h.agent_outdated && h.connected && (
-        <Button size="sm" icon={<RefreshCw />} loading={updating || pending} onClick={(e) => { e.stopPropagation(); onUpdate(); }}>Mettre à jour l'agent</Button>
+        <Button size="sm" variant="secondary" icon={<RefreshCw size={14} />} loading={updating || pending} onClick={(e) => { e.stopPropagation(); onUpdate(); }}>Mettre à jour l'agent</Button>
       )}
     </span>
   );

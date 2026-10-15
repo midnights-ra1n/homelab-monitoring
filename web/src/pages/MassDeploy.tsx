@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { api, fmtAgo, fmtDate, type Install } from "../api";
-import { Alert, Button, CodeBlock, Dialog, Field, IconButton, Segmented, Switch } from "../ui";
+import { Alert, Badge, Button, Card, CodeBlock, Dialog, Field, IconButton, Segmented, Switch, inputClass } from "../ui";
 import { HubUrlField, UNINSTALL_COMMAND, installCommand } from "./AddHostWizard";
 
 interface EnrollToken { id: number; name: string; prefix: string; expires_at: number | null; created_at: number; last_used_at: number; uses: number }
@@ -38,43 +38,43 @@ export function MassDeployDialog({ open, onClose }: { open: boolean; onClose: ()
   const install = created && { ...created, hub_url: hub.trim().replace(/\/$/, "") };
 
   return (
-    <Dialog open={open} onClose={close} wide title="Déploiement en masse"
+    <Dialog open={open} onClose={close} size="lg" title="Déploiement en masse"
       description="Un seul jeton et une seule clé pour toutes les machines : chacune s'inscrit sous son nom à sa première connexion."
-      footer={<Button variant="primary" onClick={close}>Terminer</Button>}>
-      <div className="form">
+      footer={<Button onClick={close}>Terminer</Button>}>
+      <div className="grid gap-5">
         {!install ? (
           <>
-            {error && <Alert tone="danger" title={error} />}
-            <div className="row" style={{ alignItems: "flex-end" }}>
-              <Field label="Nom du jeton" htmlFor="enr-name"><input id="enr-name" className="input" value={name} onChange={(e) => setName(e.target.value)} /></Field>
+            {error && <Alert kind="error" title={error} />}
+            <div className="grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+              <Field label="Nom du jeton" htmlFor="enr-name"><input id="enr-name" className={inputClass} value={name} onChange={(e) => setName(e.target.value)} /></Field>
               <Field label="Valable" htmlFor="enr-exp">
-                <select id="enr-exp" className="select" value={expiry} onChange={(e) => setExpiry(e.target.value)}>
+                <select id="enr-exp" className={inputClass} value={expiry} onChange={(e) => setExpiry(e.target.value)}>
                   {EXPIRY.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </Field>
-              <div><Button variant="primary" icon={<Plus />} onClick={create}>Créer le jeton commun</Button></div>
+              <div><Button icon={<Plus size={16} />} onClick={create}>Créer le jeton commun</Button></div>
             </div>
-            <p className="small muted">Le jeton commun ne sert qu'à inscrire de nouvelles machines ; chacune reçoit ensuite son propre jeton. Une durée courte suffit : les machines déjà inscrites continuent de fonctionner après l'expiration.</p>
+            <p className="text-sm text-body">Le jeton commun ne sert qu'à inscrire de nouvelles machines ; chacune reçoit ensuite son propre jeton. Une durée courte suffit : les machines déjà inscrites continuent de fonctionner après l'expiration.</p>
           </>
         ) : (
           <>
-            <Alert tone="warning" title="Le jeton ne sera plus affiché">Copiez-le maintenant (dans un vault Ansible, par exemple).</Alert>
+            <Alert kind="warning" title="Le jeton ne sera plus affiché">Copie-le maintenant (dans un vault Ansible, par exemple).</Alert>
             <HubUrlField value={hub} onChange={setHub} />
-            <Segmented label="Méthode" value={method} onChange={setMethod} options={[["ansible", "Ansible"], ["curl", "Commande"]]} />
+            <Segmented className="w-fit" label="Méthode" value={method} onChange={setMethod} options={[["ansible", "Ansible"], ["curl", "Commande"]]} />
             {method === "ansible" ? (
               <>
-                <p className="small muted">Dans <span className="mono">group_vars/&lt;groupe&gt;/main.yml</span> de votre playbook, avec le rôle <span className="mono">hlm_agent</span> (voir docs/ANSIBLE.md) :</p>
+                <p className="text-sm text-body">Dans <code className="font-mono text-xs text-h2">group_vars/&lt;groupe&gt;/main.yml</code> de votre playbook, avec le rôle <code className="font-mono text-xs text-h2">hlm_agent</code> (voir docs/ANSIBLE.md) :</p>
                 <CodeBlock text={[
                   `hlm_hub_url: ${install.hub_url}`,
                   `hlm_key: "${install.key}"`,
                   `hlm_agent_token: "{{ vault_hlm_agent_token }}"`,
                 ].join("\n")} />
-                <p className="small muted">et dans le vault (<span className="mono">ansible-vault create group_vars/&lt;groupe&gt;/vault.yml</span>) :</p>
+                <p className="text-sm text-body">et dans le vault (<code className="font-mono text-xs text-h2">ansible-vault create group_vars/&lt;groupe&gt;/vault.yml</code>) :</p>
                 <CodeBlock text={`vault_hlm_agent_token: ${install.token}`} />
               </>
             ) : (
               <>
-                <p className="small muted">La même ligne fonctionne sur toutes les machines :</p>
+                <p className="text-sm text-body">La même ligne fonctionne sur toutes les machines :</p>
                 <Switch label="Sur un Proxmox, installer aussi dans ses conteneurs LXC" checked={withLxc} onChange={setWithLxc} />
                 <CodeBlock text={installCommand(install, { smart: true, autoUpdate: true, lxcToken: withLxc ? install.token : undefined })} />
               </>
@@ -83,29 +83,29 @@ export function MassDeployDialog({ open, onClose }: { open: boolean; onClose: ()
         )}
 
         {tokens.length > 0 && (
-          <div className="card">
-            <div className="table-wrap">
-              <table>
-                <thead><tr><th>Jeton commun</th><th>Expiration</th><th className="r">Inscriptions</th><th>Dernière</th><th><span className="sr-only">Actions</span></th></tr></thead>
+          <Card flush title="Jetons communs" sub={`${tokens.length} jeton(s)`}>
+            <div className="mm-table-wrap">
+              <table className="mm-table">
+                <thead><tr><th scope="col">Nom</th><th scope="col">Expiration</th><th scope="col" className="mm-col-num">Inscriptions</th><th scope="col">Dernière</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
                 <tbody>{tokens.map((t) => {
                   const expired = t.expires_at != null && t.expires_at * 1000 < Date.now();
                   return (
                     <tr key={t.id}>
-                      <td>{t.name} <span className="mono xs tertiary">{t.prefix}…</span></td>
-                      <td>{t.expires_at == null ? "Jamais" : expired ? <span className="badge s-minor_outage">Expiré</span> : fmtDate(t.expires_at)}</td>
-                      <td className="r">{t.uses}</td>
-                      <td className="muted">{t.last_used_at ? fmtAgo(t.last_used_at) : "—"}</td>
-                      <td className="r"><IconButton label={`Révoquer ${t.name}`} icon={<Trash2 />} className="sm" onClick={() => api.del(`/api/enroll-tokens/${t.id}`).then(load)} /></td>
+                      <td className="mm-col-strong"><span className="block">{t.name}</span><span className="block font-mono text-xs font-normal text-meta">{t.prefix}…</span></td>
+                      <td>{t.expires_at == null ? "Jamais" : expired ? <Badge tone="orange" dot>Expiré</Badge> : fmtDate(t.expires_at)}</td>
+                      <td className="mm-col-num font-mono text-xs">{t.uses}</td>
+                      <td className="mm-col-muted">{t.last_used_at ? fmtAgo(t.last_used_at) : "—"}</td>
+                      <td className="w-px"><IconButton label={`Révoquer ${t.name}`} icon={<Trash2 size={15} />} onClick={() => api.del(`/api/enroll-tokens/${t.id}`).then(load)} /></td>
                     </tr>
                   );
                 })}</tbody>
               </table>
             </div>
-          </div>
+          </Card>
         )}
-        <details className="small">
-          <summary className="muted" style={{ cursor: "pointer" }}>Désinstaller l'agent d'une machine</summary>
-          <div style={{ marginTop: 8 }}><CodeBlock text={UNINSTALL_COMMAND} /></div>
+        <details className="text-sm">
+          <summary className="cursor-pointer text-meta hover:text-h1">Désinstaller l'agent d'une machine</summary>
+          <div className="mt-2"><CodeBlock text={UNINSTALL_COMMAND} /></div>
         </details>
       </div>
     </Dialog>

@@ -1,7 +1,9 @@
 import { Fragment, useState } from "react";
-import { ChevronDown, ChevronRight, Download, RefreshCw } from "lucide-react";
+import { ArrowUpRight, ChevronRight, Container, Download, LoaderCircle, PackageCheck, RefreshCw, RotateCcw, ShieldAlert } from "lucide-react";
 import { actionBusy, api, fmtAgo, fmtDate, type Host } from "../api";
-import { Alert, Button, Card, Dialog, IconButton, Kpi, Link, Switch, usePoll, BadgeIcon } from "../ui";
+import {
+  Alert, Badge, Button, Card, Dialog, EmptyState, IconButton, Link, PageHeader, SECTIONS, STAT_GRID, Skeleton, Stat, StatusIcon, Switch, cn, usePoll,
+} from "../ui";
 import { useHostAction } from "./AgentVersion";
 
 export function updateTotals(hosts: Host[]) {
@@ -19,28 +21,27 @@ export function updateTotals(hosts: Host[]) {
 export function UpdateKpis({ hosts }: { hosts: Host[] }) {
   const t = updateTotals(hosts);
   return (
-    <div className="grid kpis">
-      <Kpi label="Paquets en attente" value={<span className="num">{t.pending}</span>} detail={`${t.reporting} hôte(s) analysé(s)`} />
-      <Kpi label="Mises à jour de sécurité" value={<span className="num">{t.security}</span>} />
-      <Kpi label="Redémarrages requis" value={<span className="num">{t.reboot}</span>} />
-      <Kpi label="Hôtes à jour" value={<span className="num">{t.upToDate} / {t.reporting}</span>} />
-      {hosts.some((h) => h.docker) && <Kpi label="Images Docker à mettre à jour" value={<Link to="/containers?filtre=maj" className="num">{t.images}</Link>} />}
+    <div className={STAT_GRID}>
+      <Stat label="Hôtes à jour" value={`${t.upToDate}/${t.reporting}`} icon={<PackageCheck size={16} />} tone={t.upToDate === t.reporting ? "green" : undefined} detail={`${t.reporting} hôte(s) analysé(s)`} />
+      <Stat label="Paquets en attente" value={t.pending} detail="tous hôtes confondus" />
+      <Stat label="Sécurité" value={t.security} detail="correctifs de sécurité" icon={<ShieldAlert size={16} />} tone={t.security ? "red" : undefined} />
+      <Stat label="Redémarrages" value={t.reboot} detail="hôte(s) à redémarrer" icon={<RotateCcw size={16} />} tone={t.reboot ? "yellow" : undefined} />
     </div>
   );
 }
+
+const logClass = "mt-2 max-h-56 overflow-auto rounded-xl border border-line bg-field p-3 font-mono text-xs whitespace-pre-wrap text-h2";
 
 function ActionStatus({ h }: { h: Host }) {
   const a = h.action;
   if (!a || a.action === "update_agent") return null;
   const what = a.action === "apply_updates" ? "Installation des mises à jour" : "Vérification";
-  if (actionBusy(h)) return <span className="small muted" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><span className="spinner" aria-hidden />{what} en cours…</span>;
-  if (a.state === "pending" || a.state === "running") return <span className="small" style={{ color: "var(--danger-fg)" }}>{what} sans réponse</span>;
+  if (actionBusy(h)) return <span className="mt-1 inline-flex items-center gap-1.5 text-xs text-meta"><LoaderCircle size={12} className="animate-spin" aria-hidden />{what} en cours…</span>;
+  if (a.state === "pending" || a.state === "running") return <span className="mt-1 block text-xs text-red">{what} sans réponse</span>;
   return (
-    <details className="small">
-      <summary style={{ cursor: "pointer", color: a.state === "failed" ? "var(--danger-fg)" : "var(--text-secondary)" }}>
-        {what} {a.state === "failed" ? "en échec" : "terminée"} {fmtAgo(a.at)}
-      </summary>
-      {a.message && <pre className="codeblock" style={{ marginTop: 6, paddingRight: 12, maxHeight: 220, overflow: "auto" }}>{a.message}</pre>}
+    <details className="mt-1 text-xs">
+      <summary className={cn("cursor-pointer", a.state === "failed" ? "text-red" : "text-meta")}>{what} {a.state === "failed" ? "en échec" : "terminée"} {fmtAgo(a.at)}</summary>
+      {a.message && <pre className={logClass}>{a.message}</pre>}
     </details>
   );
 }
@@ -53,77 +54,100 @@ export function UpdatesPage() {
   const { run, busy } = useHostAction(() => refresh());
   const hosts = data ?? [];
   const ready = (h: Host) => h.connected && !actionBusy(h);
+  const images = updateTotals(hosts).images;
 
   return (
-    <div className="page">
-      <div className="page-header">
-        <div><h1>Mises à jour</h1><p className="muted">Paquets en attente sur chaque hôte (apt), relevés toutes les 6 heures par l'agent, ou à la demande.</p></div>
-        <div className="actions" style={{ alignItems: "center" }}>
-          <Switch label="Sécurité uniquement" checked={securityOnly} onChange={setSecurityOnly} />
-          <Button icon={<RefreshCw />} disabled={!hosts.some(ready)} onClick={() => hosts.filter(ready).forEach((h) => run(h, "check_updates"))}>Tout vérifier</Button>
+    <>
+      <PageHeader title="Mises à jour" description="Paquets en attente sur chaque hôte (apt), relevés toutes les 6 heures par l'agent, ou à la demande."
+        actions={<Button variant="secondary" icon={<RefreshCw size={16} />} disabled={!hosts.some(ready)} onClick={() => hosts.filter(ready).forEach((h) => run(h, "check_updates"))}>Tout vérifier</Button>} />
+      {error && <Alert kind="error" title="Impossible de charger les mises à jour" className="mb-6">{error}</Alert>}
+      {!data && !error && <Skeleton className="h-64" />}
+      {data && (
+        <div className={SECTIONS}>
+          <UpdateKpis hosts={hosts} />
+          {images > 0 && (
+            <Link to="/containers?filtre=maj" className="-mt-6 flex items-center gap-2.5 rounded-xl border border-line-subtle bg-box px-4 py-3 text-sm no-underline hover:border-line-strong">
+              <Container size={16} className="text-accent-text" aria-hidden />
+              <span className="flex-1 text-h2">{images} image(s) Docker à mettre à jour</span>
+              <ArrowUpRight size={14} className="text-meta" aria-hidden />
+            </Link>
+          )}
+          {hosts.length === 0 ? (
+            <EmptyState icon={<PackageCheck size={20} />} title="Aucun hôte">Installe l'agent depuis la page Hôtes.</EmptyState>
+          ) : (
+            <Card flush title="Hôtes" sub={`${hosts.length} hôte(s)`} actions={<Switch label="Sécurité uniquement" checked={securityOnly} onChange={setSecurityOnly} />}>
+              <div className="mm-table-wrap">
+                <table className="mm-table min-w-[60rem]">
+                  <thead><tr><th scope="col" className="mm-col-check"><span className="sr-only">Détail</span></th><th scope="col">Hôte</th><th scope="col" className="mm-col-num">En attente</th><th scope="col" className="mm-col-num">Sécurité</th><th scope="col">Redémarrage</th><th scope="col">Listes apt</th><th scope="col">Analyse</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
+                  <tbody>
+                    {hosts.map((h) => {
+                      const u = h.updates;
+                      const pkgs = (u?.packages ?? []).filter((p) => !securityOnly || p.security);
+                      const isOpen = !!open[h.id];
+                      return (
+                        <Fragment key={h.id}>
+                          <tr className="group">
+                            <td className="mm-col-check">{!!u?.pending && (
+                              <IconButton label={isOpen ? "Masquer les paquets" : "Afficher les paquets"} aria-expanded={isOpen} className="size-6!"
+                                icon={<ChevronRight size={14} className={cn("transition-transform duration-[120ms]", isOpen && "rotate-90")} />} onClick={() => setOpen({ ...open, [h.id]: !isOpen })} />
+                            )}</td>
+                            <td className="mm-col-strong max-w-[22rem]">
+                              <Link to={`/hosts/${h.id}`} className="flex min-w-0 items-center gap-2.5 py-1.5 text-inherit no-underline hover:text-accent-text">
+                                <StatusIcon kind={!u ? "pending" : u.security ? "down" : u.pending || u.reboot_required ? "warn" : "ok"} />
+                                <span className="min-w-0"><span className="block truncate">{h.name}</span><span className="block truncate font-mono text-xs font-normal text-meta">{h.info.os || (h.connected ? "" : "Agent hors ligne")}</span></span>
+                              </Link>
+                              <ActionStatus h={h} />
+                            </td>
+                            <td className="mm-col-num font-mono">{u ? u.pending : "—"}</td>
+                            <td className="mm-col-num">{!u ? "—" : u.security > 0 ? <Badge tone="red">{u.security} sécu.</Badge> : <span className="font-mono">0</span>}</td>
+                            <td>{!u ? "—" : u.reboot_required ? <Badge tone="yellow" dot>Requis</Badge> : <span className="text-meta">Non</span>}</td>
+                            <td className="mm-col-muted" title={u?.lists_updated_at ? fmtDate(u.lists_updated_at) : undefined}>{u?.lists_updated_at ? fmtAgo(u.lists_updated_at) : "—"}</td>
+                            <td className="mm-col-muted">{u ? fmtAgo(u.checked_at) : "Pas encore"}</td>
+                            <td className="w-px">
+                              <div className="flex justify-end gap-1">
+                                <Button size="sm" variant="ghost" icon={<RefreshCw size={14} />} disabled={!ready(h)} loading={busy === `${h.id}:check_updates`}
+                                  title={h.connected ? "apt-get update puis nouvelle analyse" : "Agent hors ligne"} onClick={() => run(h, "check_updates")}>Vérifier</Button>
+                                <Button variant="secondary" size="sm" icon={<Download size={14} />} disabled={!ready(h) || !u?.pending} loading={busy === `${h.id}:apply_updates`}
+                                  onClick={() => setConfirm(h)}>Mettre à jour</Button>
+                              </div>
+                            </td>
+                          </tr>
+                          {isOpen && u && (
+                            <tr><td colSpan={8} className="bg-page p-0!">
+                              <table className="mm-table mm-table--dense">
+                                <thead><tr><th scope="col" className="pl-14!">Paquet</th><th scope="col">Version installée</th><th scope="col">Nouvelle version</th><th scope="col">Type</th></tr></thead>
+                                <tbody>
+                                  {pkgs.length === 0 && <tr><td colSpan={4} className="pl-14! text-meta">Aucune mise à jour de sécurité.</td></tr>}
+                                  {pkgs.map((p) => (
+                                    <tr key={p.name}>
+                                      <td className="mm-col-strong pl-14! font-mono text-xs">{p.name}</td>
+                                      <td className="mm-col-muted font-mono text-xs">{p.current || "nouveau"}</td>
+                                      <td className="font-mono text-xs">{p.candidate}</td>
+                                      <td>{p.security ? <Badge tone="red" dot>Sécurité</Badge> : <Badge>Standard</Badge>}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </td></tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
         </div>
-      </div>
-      {error && <Alert tone="danger" title="Impossible de charger les mises à jour">{error}</Alert>}
-      {data && <UpdateKpis hosts={hosts} />}
-      <Card flush>
-        {data && hosts.length === 0 ? <div className="empty small">Aucun hôte. Installez l'agent depuis la page Hôtes.</div> : (
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th style={{ width: 44 }}><span className="sr-only">Détail</span></th><th>Hôte</th><th className="r">En attente</th><th className="r">Sécurité</th><th>Redémarrage</th><th>Listes apt</th><th>Analyse</th><th className="r">Actions</th></tr></thead>
-              <tbody>
-                {hosts.map((h) => {
-                  const u = h.updates;
-                  const pkgs = (u?.packages ?? []).filter((p) => !securityOnly || p.security);
-                  const isOpen = !!open[h.id];
-                  return (
-                    <Fragment key={h.id}>
-                      <tr>
-                        <td>{!!u?.pending && <IconButton label={isOpen ? "Masquer les paquets" : "Afficher les paquets"} aria-expanded={isOpen} icon={isOpen ? <ChevronDown /> : <ChevronRight />} className="sm" onClick={() => setOpen({ ...open, [h.id]: !isOpen })} />}</td>
-                        <td><Link to={`/hosts/${h.id}`}>{h.name}</Link><div className="xs tertiary">{h.info.os || (h.connected ? "" : "Agent hors ligne")}</div><ActionStatus h={h} /></td>
-                        <td className="r">{u ? u.pending : "—"}</td>
-                        <td className="r">{!u ? "—" : u.security > 0 ? <span className="badge s-minor_outage">{u.security}</span> : 0}</td>
-                        <td>{!u ? "—" : u.reboot_required ? <span className="badge s-degraded"><BadgeIcon cls="s-degraded" />Requis</span> : <span className="muted">Non</span>}</td>
-                        <td className="muted" title={u?.lists_updated_at ? fmtDate(u.lists_updated_at) : undefined}>{u?.lists_updated_at ? fmtAgo(u.lists_updated_at) : "—"}</td>
-                        <td className="muted">{u ? fmtAgo(u.checked_at) : "Pas encore"}</td>
-                        <td className="r" style={{ whiteSpace: "nowrap" }}>
-                          <Button size="sm" variant="ghost" icon={<RefreshCw />} disabled={!ready(h)} loading={busy === `${h.id}:check_updates`}
-                            title={h.connected ? "apt-get update puis nouvelle analyse" : "Agent hors ligne"} onClick={() => run(h, "check_updates")}>Vérifier</Button>
-                          <Button size="sm" icon={<Download />} disabled={!ready(h) || !u?.pending} loading={busy === `${h.id}:apply_updates`}
-                            onClick={() => setConfirm(h)}>Mettre à jour</Button>
-                        </td>
-                      </tr>
-                      {isOpen && u && (
-                        <tr><td colSpan={8} style={{ padding: 0, background: "var(--bg-subtle)" }}>
-                          <table>
-                            <thead><tr><th style={{ paddingLeft: 56 }}>Paquet</th><th>Version installée</th><th>Nouvelle version</th><th>Type</th></tr></thead>
-                            <tbody>
-                              {pkgs.length === 0 && <tr><td colSpan={4} className="muted" style={{ paddingLeft: 56 }}>Aucune mise à jour de sécurité.</td></tr>}
-                              {pkgs.map((p) => (
-                                <tr key={p.name}>
-                                  <td className="mono" style={{ paddingLeft: 56 }}>{p.name}</td>
-                                  <td className="mono muted">{p.current || "nouveau"}</td>
-                                  <td className="mono">{p.candidate}</td>
-                                  <td>{p.security ? <span className="badge s-minor_outage">Sécurité</span> : <span className="badge">Standard</span>}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </td></tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
-      <Dialog open={!!confirm} onClose={() => setConfirm(undefined)} title={`Mettre à jour ${confirm?.name ?? ""}`}
-        description={`${confirm?.updates?.pending ?? 0} paquet(s) seront installés (apt-get upgrade, configuration locale conservée, aucun paquet supprimé).`}
-        footer={<><Button onClick={() => setConfirm(undefined)}>Annuler</Button>
-          <Button variant="primary" icon={<Download />} onClick={() => { const h = confirm!; setConfirm(undefined); run(h, "apply_updates"); }}>Installer les mises à jour</Button></>}>
-        <p className="small muted">L'hôte n'est pas redémarré automatiquement{confirm?.updates?.reboot_required ? " ; un redémarrage est déjà requis" : ""}. Le journal apt s'affiche sous le nom de l'hôte une fois l'opération terminée.</p>
+      )}
+      <Dialog open={!!confirm} onClose={() => setConfirm(undefined)} size="sm" title={`Mettre à jour ${confirm?.name ?? ""}`}
+        footer={<><Button variant="secondary" onClick={() => setConfirm(undefined)}>Annuler</Button>
+          <Button icon={<Download size={16} />} onClick={() => { const h = confirm!; setConfirm(undefined); run(h, "apply_updates"); }}>Installer les mises à jour</Button></>}>
+        <p className="text-sm leading-relaxed text-body">
+          {confirm?.updates?.pending ?? 0} paquet(s) seront installés (apt-get upgrade, configuration locale conservée, aucun paquet supprimé).
+          L'hôte n'est pas redémarré automatiquement{confirm?.updates?.reboot_required ? " ; un redémarrage est déjà requis" : ""}. Le journal apt s'affiche sous le nom de l'hôte une fois l'opération terminée.
+        </p>
       </Dialog>
-    </div>
+    </>
   );
 }

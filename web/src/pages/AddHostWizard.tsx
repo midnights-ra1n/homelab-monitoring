@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Check, CircleCheck, Cpu, HardDrive, Laptop, LoaderCircle, Server } from "lucide-react";
+import { Check, Cpu, HardDrive, Laptop, LoaderCircle, Server } from "lucide-react";
 import { api, fmtBytes, fmtPct, type Host, type Install } from "../api";
-import { Alert, Button, CodeBlock, Dialog, Field, Segmented, Switch, navigate, useToast } from "../ui";
+import { Alert, Button, CodeBlock, Dialog, Field, Segmented, Switch, cn, inputClass, navigate, useToast } from "../ui";
 
 type Kind = "vm" | "proxmox" | "physical" | "client";
 const KINDS: { id: Kind; label: string; hint: string; icon: typeof Server; smart: boolean }[] = [
@@ -34,7 +34,7 @@ export function HubUrlField({ value, onChange }: { value: string; onChange: (v: 
   return (
     <Field label="Adresse du hub" htmlFor="hub-url" error={validHubUrl(value) ? serverError : "L'adresse doit commencer par http:// ou https://"}
       hint="Adresse que la machine utilise pour joindre ce serveur (IP du LAN, nom de domaine…). Mémorisée pour les prochains hôtes.">
-      <input id="hub-url" className="input mono" value={value} onChange={(e) => { setServerError(undefined); onChange(e.target.value); }} onBlur={save} spellCheck={false} />
+      <input id="hub-url" className={`${inputClass} font-mono`} value={value} onChange={(e) => { setServerError(undefined); onChange(e.target.value); }} onBlur={save} spellCheck={false} />
     </Field>
   );
 }
@@ -71,39 +71,39 @@ export function InstallInstructions({ install: initial, name, options = { smart:
   const [hub, setHub] = useState(initial.hub_url);
   const install = { ...initial, hub_url: hub.trim().replace(/\/$/, "") };
   return (
-    <div className="form">
+    <div className="grid gap-5">
       <HubUrlField value={hub} onChange={setHub} />
-      <Alert tone="warning" title="Le jeton ne sera plus affiché">Copiez-le maintenant. Il peut être régénéré depuis la fiche de l'hôte.</Alert>
+      <Alert kind="warning" title="Le jeton ne sera plus affiché">Copie-le maintenant. Il peut être régénéré depuis la fiche de l'hôte.</Alert>
       {install.hub_url.startsWith("http://") && (
-        <Alert tone="info" title="Liaison non chiffrée">Le hub est joint en HTTP : la commande ajoute ALLOW_INSECURE=true. Un reverse proxy HTTPS chiffrerait les échanges.</Alert>
+        <Alert kind="info" title="Liaison non chiffrée">Le hub est joint en HTTP : la commande ajoute ALLOW_INSECURE=true. Un reverse proxy HTTPS chiffrerait les échanges.</Alert>
       )}
-      <Segmented label="Méthode d'installation" value={method} onChange={setMethod} options={[["curl", "Commande"], ["ansible", "Ansible"], ["manual", "Manuel"]]} />
+      <Segmented className="w-fit" label="Méthode d'installation" value={method} onChange={setMethod} options={[["curl", "Commande"], ["ansible", "Ansible"], ["manual", "Manuel"]]} />
       {method === "curl" && (
         <>
-          <p className="small muted">Collez cette ligne dans un terminal de la machine (Debian, avec sudo). Le script télécharge le binaire, vérifie son empreinte SHA-256, crée l'utilisateur hlm-agent et démarre le service.</p>
+          <p className="text-sm text-body">Collez cette ligne dans un terminal de la machine (Debian, avec sudo). Le script télécharge le binaire, vérifie son empreinte SHA-256, crée l'utilisateur hlm-agent et démarre le service.</p>
           {options.lxcToken && (
-            <Alert tone="info" title="Conteneurs LXC inclus">Après le Proxmox, le script installe l'agent dans chaque conteneur Debian démarré (copie par pct push, sans accès Internet nécessaire dans les conteneurs). Chacun apparaît sous son nom. Relancez la même ligne pour équiper les conteneurs créés plus tard ; le jeton commun est valable 7 jours.</Alert>
+            <Alert kind="info" title="Conteneurs LXC inclus">Après le Proxmox, le script installe l'agent dans chaque conteneur Debian démarré (copie par pct push, sans accès Internet nécessaire dans les conteneurs). Chacun apparaît sous son nom. Relancez la même ligne pour équiper les conteneurs créés plus tard ; le jeton commun est valable 7 jours.</Alert>
           )}
           <CodeBlock text={installCommand(install, options)} />
         </>
       )}
       {method === "ansible" && (
         <>
-          <p className="small muted">Avec le rôle <span className="mono">deploy/ansible/roles/hlm_agent</span>, ajoutez ces variables pour cet hôte puis lancez le playbook. Pour tout un parc, utilisez plutôt un jeton commun : bouton « Déploiement en masse » de la page Hôtes.</p>
+          <p className="text-sm text-body">Avec le rôle <code className="font-mono text-xs text-h2">deploy/ansible/roles/hlm_agent</code>, ajoutez ces variables pour cet hôte puis lancez le playbook. Pour tout un parc, utilisez plutôt un jeton commun : bouton « Déploiement en masse » de la page Hôtes.</p>
           <CodeBlock text={ansibleVars(name, install, options)} />
           <CodeBlock text="ansible-playbook -i inventory.ini deploy/ansible/site.yml --ask-vault-pass --limit NOM_DE_L_HOTE" />
         </>
       )}
       {method === "manual" && (
         <>
-          <p className="small muted">Installez le binaire <span className="mono">hlm-agent-linux-x86_64</span> ou <span className="mono">-aarch64</span> depuis les releases GitHub dans <span className="mono">/opt/hlm-agent/</span>, puis créez <span className="mono">/etc/hlm-agent/agent.env</span> (root:hlm-agent, 0640) :</p>
+          <p className="text-sm text-body">Installez le binaire <code className="font-mono text-xs text-h2">hlm-agent-linux-x86_64</code> ou <code className="font-mono text-xs text-h2">-aarch64</code> depuis les releases GitHub dans <code className="font-mono text-xs text-h2">/opt/hlm-agent/</code>, puis créez <code className="font-mono text-xs text-h2">/etc/hlm-agent/agent.env</code> (root:hlm-agent, 0640) :</p>
           <CodeBlock text={envFile(install, options)} />
-          <p className="small muted">et installez l'unité <span className="mono">rust-agent/hlm-agent.service</span> du dépôt dans <span className="mono">/etc/systemd/system/</span> : <span className="mono">systemctl enable --now hlm-agent</span>.</p>
+          <p className="text-sm text-body">et installez l'unité <code className="font-mono text-xs text-h2">rust-agent/hlm-agent.service</code> du dépôt dans <code className="font-mono text-xs text-h2">/etc/systemd/system/</code> : <code className="font-mono text-xs text-h2">systemctl enable --now hlm-agent</code>.</p>
         </>
       )}
-      <details className="small">
-        <summary className="muted" style={{ cursor: "pointer" }}>Désinstaller l'agent plus tard</summary>
-        <div style={{ marginTop: 8 }}><CodeBlock text={UNINSTALL_COMMAND} /></div>
+      <details className="text-sm">
+        <summary className="cursor-pointer text-meta hover:text-h1">Désinstaller l'agent plus tard</summary>
+        <div className="mt-2"><CodeBlock text={UNINSTALL_COMMAND} /></div>
       </details>
     </div>
   );
@@ -113,10 +113,13 @@ const STEPS = ["Machine", "Installation", "Connexion"];
 
 function Stepper({ step }: { step: number }) {
   return (
-    <ol className="stepper" aria-label="Étapes">
+    <ol className="mb-5 flex gap-2" aria-label="Étapes">
       {STEPS.map((s, i) => (
-        <li key={s} className={i < step ? "done" : i === step ? "current" : ""} aria-current={i === step ? "step" : undefined}>
-          <span className="step-num" aria-hidden>{i < step ? <Check size={14} /> : i + 1}</span>
+        <li key={s} aria-current={i === step ? "step" : undefined}
+          className={cn("flex flex-1 items-center gap-2 border-b-2 pb-2 text-sm font-medium", i === step ? "border-accent text-h1" : i < step ? "border-accent-muted text-body" : "border-line text-meta")}>
+          <span aria-hidden className={cn("grid size-[22px] shrink-0 place-items-center rounded-full text-xs tabular-nums", i <= step ? "bg-accent text-on-accent" : "bg-muted")}>
+            {i < step ? <Check size={14} /> : i + 1}
+          </span>
           <span>{s}</span>
         </li>
       ))}
@@ -174,37 +177,38 @@ export function AddHostWizard({ open, onClose }: { open: boolean; onClose: () =>
 
   const footer = [
     <>
-      <Button onClick={close}>Annuler</Button>
-      <Button variant="primary" type="submit" form="wiz-host" loading={busy}>{created ? "Continuer" : "Créer l'hôte"}</Button>
+      <Button variant="secondary" onClick={close}>Annuler</Button>
+      <Button type="submit" form="wiz-host" loading={busy}>{created ? "Continuer" : "Créer l'hôte"}</Button>
     </>,
     <>
-      <Button onClick={() => setStep(0)}>Retour</Button>
-      <Button variant="primary" onClick={() => setStep(2)}>J'ai lancé l'installation</Button>
+      <Button variant="secondary" onClick={() => setStep(0)}>Retour</Button>
+      <Button onClick={() => setStep(2)}>J'ai lancé l'installation</Button>
     </>,
     <>
-      <Button onClick={() => setStep(1)}>Retour aux instructions</Button>
-      {online ? <Button variant="primary" onClick={() => { const id = created!.id; close(); navigate(`/hosts/${id}`); }}>Voir l'hôte</Button>
-        : <Button onClick={close}>Fermer, je reviendrai plus tard</Button>}
+      <Button variant="secondary" onClick={() => setStep(1)}>Retour aux instructions</Button>
+      {online ? <Button onClick={() => { const id = created!.id; close(); navigate(`/hosts/${id}`); }}>Voir l'hôte</Button>
+        : <Button variant="secondary" onClick={close}>Fermer, je reviendrai plus tard</Button>}
     </>,
   ][step];
 
   return (
-    <Dialog open={open} onClose={close} wide title="Ajouter un hôte" description="Trois étapes : décrire la machine, installer l'agent, vérifier la connexion." footer={footer}>
+    <Dialog open={open} onClose={close} size="lg" title="Ajouter un hôte" description="Trois étapes : décrire la machine, installer l'agent, vérifier la connexion." footer={footer}>
       <Stepper step={step} />
       {step === 0 && (
-        <form id="wiz-host" className="form" onSubmit={create} noValidate>
+        <form id="wiz-host" className="grid gap-5" onSubmit={create} noValidate>
           <Field label="Nom" htmlFor="wiz-name" error={error} hint="Tel qu'il apparaîtra dans le tableau de bord, par exemple pve-01">
-            <input id="wiz-name" className="input" value={name} disabled={!!created} onChange={(e) => setName(e.target.value)} autoFocus aria-invalid={!!error} />
+            <input id="wiz-name" className={inputClass} value={name} disabled={!!created} onChange={(e) => setName(e.target.value)} autoFocus aria-invalid={!!error} />
           </Field>
-          <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
-            <legend style={{ fontSize: "var(--text-sm)", fontWeight: 500, marginBottom: 6 }}>Type de machine</legend>
-            <div className="choice-grid" role="radiogroup">
+          <fieldset className="mm-field">
+            <legend className="mm-field__label mb-1.5">Type de machine</legend>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="radiogroup">
               {KINDS.map((k) => (
-                <button key={k.id} type="button" role="radio" aria-checked={kind === k.id} className="choice"
+                <button key={k.id} type="button" role="radio" aria-checked={kind === k.id}
+                  className="flex flex-col items-start gap-1 rounded-xl border border-line-subtle bg-box p-3 text-left transition-colors hover:border-line-strong aria-checked:border-accent aria-checked:bg-accent-soft"
                   onClick={() => { setKind(k.id); setOpts((o) => ({ ...o, smart: k.smart })); }}>
-                  <k.icon size={20} aria-hidden />
-                  <strong>{k.label}</strong>
-                  <span className="xs muted">{k.hint}</span>
+                  <span className="mb-1 flex size-8 items-center justify-center rounded-full bg-accent-soft text-accent-text"><k.icon size={16} aria-hidden /></span>
+                  <span className="text-sm font-medium text-h1">{k.label}</span>
+                  <span className="text-xs text-meta">{k.hint}</span>
                 </button>
               ))}
             </div>
@@ -218,26 +222,26 @@ export function AddHostWizard({ open, onClose }: { open: boolean; onClose: () =>
       )}
       {step === 1 && created && <InstallInstructions install={created.install} name={name} options={opts} />}
       {step === 2 && (
-        <div className="form" aria-live="polite">
+        <div className="grid gap-5" aria-live="polite">
           {online ? (
             <>
-              <div className="alert success"><CircleCheck aria-hidden /><div><strong>{name} est connecté</strong>Les premières mesures sont arrivées.</div></div>
-              <dl className="kv">
+              <Alert kind="success" title={`${name} est connecté`}>Les premières mesures sont arrivées.</Alert>
+              <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:text-h2 [&_dt]:text-meta">
                 <dt>Système</dt><dd>{host!.info.os || "—"}</dd>
                 <dt>Processeur</dt><dd>{host!.info.cpu_model || "—"}</dd>
-                <dt>CPU</dt><dd className="num">{fmtPct(host!.latest.cpu)}</dd>
-                <dt>Mémoire</dt><dd className="num">{fmtBytes(host!.latest.mem_used)} / {fmtBytes(host!.latest.mem_total)}</dd>
-                <dt>Agent</dt><dd className="mono">{host!.info.agent_version || "—"}</dd>
+                <dt>CPU</dt><dd className="tabular-nums">{fmtPct(host!.latest.cpu)}</dd>
+                <dt>Mémoire</dt><dd className="tabular-nums">{fmtBytes(host!.latest.mem_used)} / {fmtBytes(host!.latest.mem_total)}</dd>
+                <dt>Agent</dt><dd className="font-mono">{host!.info.agent_version || "—"}</dd>
               </dl>
             </>
           ) : (
             <>
-              <div className="alert info"><LoaderCircle aria-hidden className="spin" /><div><strong>En attente de l'agent…</strong>La connexion apparaît ici quelques secondes après la fin de l'installation.</div></div>
-              <p className="small muted">Rien après une minute ? Sur la machine : <span className="mono">systemctl status hlm-agent</span> et <span className="mono">journalctl -u hlm-agent -n 30</span>. Messages fréquents :</p>
-              <ul className="small muted" style={{ margin: 0, paddingLeft: 18 }}>
-                <li><span className="mono">hub rejected TOKEN (401)</span> : jeton mal copié ou régénéré depuis.</li>
-                <li><span className="mono">hub signature invalid</span> : la clé KEY ne correspond pas à ce hub.</li>
-                <li><span className="mono">HUB_URL uses plain http</span> : ajoutez ALLOW_INSECURE=true.</li>
+              <Alert kind="info" title="En attente de l'agent…" action={<LoaderCircle size={16} className="animate-spin text-meta" aria-hidden />}>La connexion apparaît ici quelques secondes après la fin de l'installation.</Alert>
+              <p className="text-sm text-body">Rien après une minute ? Sur la machine : <code className="font-mono text-xs text-h2">systemctl status hlm-agent</code> et <code className="font-mono text-xs text-h2">journalctl -u hlm-agent -n 30</code>. Messages fréquents :</p>
+              <ul className="m-0 grid list-disc gap-1 pl-5 text-sm text-body">
+                <li><code className="font-mono text-xs text-h2">hub rejected TOKEN (401)</code> : jeton mal copié ou régénéré depuis.</li>
+                <li><code className="font-mono text-xs text-h2">hub signature invalid</code> : la clé KEY ne correspond pas à ce hub.</li>
+                <li><code className="font-mono text-xs text-h2">HUB_URL uses plain http</code> : ajoutez ALLOW_INSECURE=true.</li>
                 <li>Délai dépassé : la machine ne joint pas {created?.install.hub_url} (pare-feu, DNS).</li>
               </ul>
             </>

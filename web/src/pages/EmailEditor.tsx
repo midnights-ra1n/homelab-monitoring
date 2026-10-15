@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { BlockEditor, type BlockType } from "../blocks";
-import { Button, Field, Segmented } from "../ui";
+import { Alert, Button, Card, CardBody, CardHeader, FORM_ACTIONS, Field, Segmented, inputClass, textareaClass } from "../ui";
 
 interface EmailBlock { id: string; type: "header" | "summary" | "events" | "text" | "button" | "divider" | "footer"; text?: string; label?: string; url?: string }
 
@@ -36,50 +36,51 @@ export function EmailEditor({ draft, setDraft, save, busy }: {
   }, [draft.email_subject, draft.email_html, draft.email_blocks, mode]);
 
   return (
-    <div className="form">
-      <Field label="Mode"><Segmented label="Mode d'édition" value={mode} onChange={(v) => setDraft({ ...draft, email_mode: v })} options={[["blocks", "Éditeur visuel"], ["html", "HTML avancé"]]} /></Field>
-      <Field label="Objet" htmlFor="s-subj" hint="Syntaxe Go template : .Down, .Warnings, .Events…">
-        <input id="s-subj" className="input mono" value={draft.email_subject ?? ""} onChange={(e) => setDraft({ ...draft, email_subject: e.target.value })} />
-      </Field>
-      {err && <span className="small" style={{ color: "var(--danger-fg)" }} role="alert">{err}</span>}
-      <div className="editor-layout" style={{ gridTemplateColumns: "1fr" }}>
-        {mode === "blocks" ? (
-          <BlockEditor blocks={blocks} onChange={setBlocks} types={TYPES}
-            title={(b) => b.text || b.label || TYPES[b.type].description}
-            renderFields={(b, up) => (
-              <>
-                {(b.type === "header" || b.type === "text" || b.type === "footer") && (
-                  <Field label="Texte" hint={`Variables : ${PLACEHOLDERS}`}>
-                    {b.type === "text"
-                      ? <textarea className="textarea" style={{ minHeight: 100, fontFamily: "var(--font-sans)" }} value={b.text ?? ""} onChange={(e) => up({ text: e.target.value })} />
-                      : <input className="input" value={b.text ?? ""} onChange={(e) => up({ text: e.target.value })} />}
-                  </Field>
-                )}
-                {b.type === "button" && (
-                  <>
-                    <Field label="Libellé"><input className="input" value={b.label ?? ""} onChange={(e) => up({ label: e.target.value })} /></Field>
-                    <Field label="Lien (facultatif)" hint="Vide : adresse du tableau de bord (HLM_PUBLIC_URL)"><input className="input mono" placeholder="https://" value={b.url ?? ""} onChange={(e) => up({ url: e.target.value })} /></Field>
-                  </>
-                )}
-                {(b.type === "summary" || b.type === "events" || b.type === "divider") && <p className="small muted">{TYPES[b.type].description}. Aucun réglage.</p>}
-              </>
-            )} />
-        ) : (
-          <Field label="Corps HTML" htmlFor="s-html" hint="Variables : .Title, .Date, .URL, .Down, .Warnings, .Events (.Name, .Kind, .FromLabel, .ToLabel, .Color, .Time, .Message)">
-            <textarea id="s-html" className="textarea" style={{ minHeight: 260 }} spellCheck={false} value={draft.email_html ?? ""} onChange={(e) => setDraft({ ...draft, email_html: e.target.value })} />
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:items-start">
+      <Card>
+        <CardBody className="grid gap-5">
+          <Segmented label="Mode d'édition" value={mode} onChange={(v) => setDraft({ ...draft, email_mode: v })} options={[["blocks", "Éditeur visuel"], ["html", "HTML avancé"]]} />
+          <Field label="Objet" htmlFor="s-subj" hint="Syntaxe Go template : .Down, .Warnings, .Events…">
+            <input id="s-subj" className={`${inputClass} font-mono`} value={draft.email_subject ?? ""} onChange={(e) => setDraft({ ...draft, email_subject: e.target.value })} />
           </Field>
-        )}
-        {preview && (
-          <Field label={`Aperçu : ${preview.subject}`}>
-            {/* sandbox without allow-scripts: the template cannot run code in the dashboard. */}
-            <iframe title="Aperçu de l'e-mail" sandbox="" srcDoc={preview.html} style={{ width: "100%", height: 420, border: "1px solid var(--border-default)", borderRadius: "var(--radius-md)", background: "#fff" }} />
-          </Field>
-        )}
-      </div>
-      <div className="row">
-        <Button variant="primary" loading={busy === "tpl"} onClick={() => save("tpl", ["email_mode", "email_subject", "email_html", "email_blocks"])}>Enregistrer le modèle</Button>
-        <Button onClick={() => setDraft({ ...draft, email_subject: "", email_html: "", email_blocks: "" })}>Rétablir le modèle par défaut</Button>
-      </div>
+          {err && <Alert kind="error">{err}</Alert>}
+          {mode === "blocks" ? (
+            <BlockEditor blocks={blocks} onChange={setBlocks} types={TYPES}
+              title={(b) => b.text || b.label || TYPES[b.type].description}
+              renderFields={(b, up) => (
+                <>
+                  {(b.type === "header" || b.type === "text" || b.type === "footer") && (
+                    <Field label="Texte" hint={`Variables : ${PLACEHOLDERS}`}>
+                      {b.type === "text"
+                        ? <textarea className={textareaClass} value={b.text ?? ""} onChange={(e) => up({ text: e.target.value })} />
+                        : <input className={inputClass} value={b.text ?? ""} onChange={(e) => up({ text: e.target.value })} />}
+                    </Field>
+                  )}
+                  {b.type === "button" && (
+                    <>
+                      <Field label="Libellé"><input className={inputClass} value={b.label ?? ""} onChange={(e) => up({ label: e.target.value })} /></Field>
+                      <Field label="Lien (facultatif)" hint="Vide : adresse du tableau de bord (HLM_PUBLIC_URL)"><input className={`${inputClass} font-mono`} placeholder="https://" value={b.url ?? ""} onChange={(e) => up({ url: e.target.value })} /></Field>
+                    </>
+                  )}
+                  {(b.type === "summary" || b.type === "events" || b.type === "divider") && <p className="text-sm text-meta">{TYPES[b.type].description}. Aucun réglage.</p>}
+                </>
+              )} />
+          ) : (
+            <Field label="Corps HTML" htmlFor="s-html" hint="Variables : .Title, .Date, .URL, .Down, .Warnings, .Events (.Name, .Kind, .FromLabel, .ToLabel, .Color, .Time, .Message)">
+              <textarea id="s-html" className={`${textareaClass} min-h-64 font-mono text-xs!`} spellCheck={false} value={draft.email_html ?? ""} onChange={(e) => setDraft({ ...draft, email_html: e.target.value })} />
+            </Field>
+          )}
+          <div className={FORM_ACTIONS}>
+            <Button variant="ghost" onClick={() => setDraft({ ...draft, email_subject: "", email_html: "", email_blocks: "" })}>Rétablir le modèle par défaut</Button>
+            <Button loading={busy === "tpl"} onClick={() => save("tpl", ["email_mode", "email_subject", "email_html", "email_blocks"])}>Enregistrer le modèle</Button>
+          </div>
+        </CardBody>
+      </Card>
+      <Card className="overflow-hidden xl:sticky xl:top-6">
+        <CardHeader overline="Aperçu" title={preview?.subject ?? "…"} />
+        {/* sandbox without allow-scripts: the template cannot run code in the dashboard. */}
+        {preview && <iframe title="Aperçu de l'e-mail" sandbox="" srcDoc={preview.html} className="block h-[32rem] w-full border-t border-line bg-white" />}
+      </Card>
     </div>
   );
 }
