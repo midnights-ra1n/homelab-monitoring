@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// exportDoc is the import/export format. Secrets (SMTP password, agent tokens) are never
+// exportDoc is the import/export format. Secrets (SMTP password, Meross key, SNMP credentials, agent tokens) are never
 // included: hosts are exported by name only and need a new token after import.
 type exportDoc struct {
 	Format     string            `json:"format"`
@@ -18,14 +18,14 @@ type exportDoc struct {
 
 type exportMetrics struct {
 	Hosts    map[string][][]any `json:"hosts"`    // host name -> rows [ts,cpu,mem_used,mem_total,disk_used,disk_total,net_rx,net_tx,load1,temp]
-	Monitors map[string][][]any `json:"monitors"` // monitor name -> rows [ts_ms,status,latency_ms,message]
+	Monitors map[string][][]any `json:"monitors"` // monitor name -> rows [ts_ms,status,latency_ms,message,value]
 }
 
 const exportFormat = "hlm-export-v1"
 
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	doc := exportDoc{Format: exportFormat, ExportedAt: time.Now().Unix(), Settings: s.allSettings()}
-	delete(doc.Settings, "smtp_pass")
+	dropSecrets(doc.Settings)
 	mons, err := s.loadMonitors("")
 	if err != nil {
 		serverErr(w, err)
@@ -55,7 +55,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 			doc.Metrics.Hosts[h.Name] = rows
 		}
 		for _, m := range mons {
-			rows, err := s.queryRows(`SELECT ts,status,latency_ms,message FROM monitor_results WHERE monitor_id=? ORDER BY ts`, 4, m.ID)
+			rows, err := s.queryRows(`SELECT ts,status,latency_ms,message,value FROM monitor_results WHERE monitor_id=? ORDER BY ts`, 5, m.ID)
 			if err != nil {
 				serverErr(w, err)
 				return
@@ -99,7 +99,7 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "Format de fichier non reconnu (attendu "+exportFormat+")")
 		return
 	}
-	delete(doc.Settings, "smtp_pass")
+	dropSecrets(doc.Settings)
 	if msg := validateSettings(doc.Settings); msg != "" {
 		writeErr(w, 400, msg)
 		return

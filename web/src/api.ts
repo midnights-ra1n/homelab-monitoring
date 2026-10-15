@@ -42,10 +42,13 @@ export interface HostAction { action: HostActionName; target?: string; state: "p
 export const actionBusy = (h: Host) => !!h.action && (h.action.state === "pending" || h.action.state === "running") && Date.now() / 1000 - h.action.at < 7200;
 export interface Install { hub_url: string; key: string; token: string; command: string }
 
-export type MonitorType = "http" | "tcp" | "dns" | "ssl";
+export type MonitorType = "http" | "tcp" | "dns" | "ssl" | "snmp" | "meross";
 export interface MonitorConfig {
   method?: string; expected_status?: string; keyword?: string; ignore_tls?: boolean; check_ssl?: boolean; degraded_ms?: number;
   dns_server?: string; record_type?: string; expected?: string; warn_days?: number; failure_threshold?: number;
+  min_value?: number; max_value?: number; unit?: string; oid?: string; snmp_version?: "1" | "2c" | "3";
+  /** Secrets are write-only: the API never returns them, an empty value keeps the saved one. */
+  community?: string; snmp_user?: string; auth_proto?: string; auth_pass?: string; priv_proto?: string; priv_pass?: string; channel?: number;
 }
 export interface Day { day: number; uptime: number | null; worst: Status }
 export interface Monitor {
@@ -61,7 +64,7 @@ export function certDays(m: Monitor) {
 }
 export type MonitorInput = Pick<Monitor, "name" | "type" | "target" | "interval_s" | "timeout_s" | "config" | "enabled" | "maintenance" | "public">;
 
-export interface Series { t: number[]; latency: (number | null)[]; worst: Status[]; name?: string }
+export interface Series { t: number[]; latency: (number | null)[]; value?: (number | null)[]; worst: Status[]; name?: string }
 export interface Overview { status: Status; hosts: Host[]; monitors: Monitor[]; latency: Series[] }
 export type HostSeries = Record<"t" | "cpu" | "mem" | "swap" | "disk" | "net_rx" | "net_tx" | "load1" | "temp" | "cpu_temp", (number | null)[]>;
 

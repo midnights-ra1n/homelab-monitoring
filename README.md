@@ -6,7 +6,7 @@ Supervision légère d'un homelab : un **hub** (Go + SQLite + interface React, l
 - Mises à jour système (Debian / apt) : paquets en attente, mises à jour de sécurité, redémarrage requis, relevés sans privilèges toutes les 6 heures ; vérification et installation depuis le tableau de bord.
 - Docker : conteneurs (état, healthcheck, CPU, mémoire, réseau), images comparées à leur registre, mise à jour des conteneurs Docker Compose en un clic.
 - Proxmox : installation de l'agent sur l'hôte et dans tous ses conteneurs LXC en une commande ; température CPU des machines physiques.
-- Sondes : HTTP(S) (codes attendus, mot-clé, case « Vérifier le certificat SSL » avec jours restants), port TCP, DNS (type d'enregistrement, serveur, réponse attendue), certificat SSL seul.
+- Sondes : HTTP(S) (codes attendus, mot-clé, case « Vérifier le certificat SSL » avec jours restants), port TCP, DNS (type d'enregistrement, serveur, réponse attendue), certificat SSL seul, SNMP v1/v2c/v3 (OID numérique, seuils haut/bas), prises connectées Meross (puissance lue en local, seuil d'alerte, rapport de consommation par jour/semaine/mois par e-mail et export CSV).
 - Avertissement e-mail avant l'expiration d'un certificat (délai réglable par sonde, par exemple 3 jours), envoyé une seule fois par certificat.
 - États façon Statuspage : opérationnel, performances dégradées, maintenance, panne partielle, panne majeure.
 - Alertes e-mail SMTP **regroupées** : tous les changements d'état d'une fenêtre (60 s par défaut) partent dans un seul message. Modèle HTML entièrement personnalisable avec aperçu.

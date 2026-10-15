@@ -1,18 +1,24 @@
 import { useMemo, useState } from "react";
 import { ChevronRight, LayoutGrid, List, Pencil, Plus, Radar, ShieldAlert, Timer, Trash2 } from "lucide-react";
-import { api, certDays, fmtAgo, fmtDate, fmtMs, statusLabel, type Monitor, type MonitorInput, type MonitorType, type Series } from "../api";
+import { api, certDays, fmtAgo, fmtDate, fmtMs, fmtNum, statusLabel, type Monitor, type MonitorInput, type MonitorType, type Series } from "../api";
 import {
   Alert, Badge, Button, Card, Chart, Dialog, EmptyState, Field, Link, PageHeader, SECTIONS, STAT_GRID, SectionTitle, Segmented, Skeleton, Stat, StatusBadge,
   StatusIcon, Switch, Tag, UptimeBars, cn, fmtLatency, formatPct, inputClass, kindTone, navigate, statusKind, usePoll, useTitle, useToast,
 } from "../ui";
 
-const TYPES: Record<MonitorType, string> = { http: "HTTP(S)", tcp: "Port TCP", dns: "DNS", ssl: "Certificat SSL" };
+const TYPES: Record<MonitorType, string> = { http: "HTTP(S)", tcp: "Port TCP", dns: "DNS", ssl: "Certificat SSL", snmp: "SNMP", meross: "Prise Meross" };
 const TARGET_HINT: Record<MonitorType, [string, string]> = {
   http: ["URL", "https://nextcloud.example.fr/status.php"],
   tcp: ["Hôte et port", "192.168.1.10:22"],
   dns: ["Nom de domaine", "example.fr"],
   ssl: ["Domaine (port facultatif)", "example.fr ou example.fr:8443"],
+  snmp: ["Équipement (port facultatif)", "192.168.1.2 ou switch.lan:161"],
+  meross: ["Adresse IP locale de la prise", "192.168.1.40"],
 };
+
+/** Unit of the value read by snmp / meross probes. */
+const unitOf = (m: { type: MonitorType; config: { unit?: string } }) => (m.type === "meross" ? "W" : m.config.unit ?? "");
+const fmtValue = (unit: string) => (v: number) => `${fmtNum(v, v < 10 ? 2 : 1)}${unit ? ` ${unit}` : ""}`;
 
 /** Certificate expiry badge: always paired with a text label, never colour alone. */
 export function CertBadge({ m }: { m: Monitor }) {
@@ -74,7 +80,7 @@ export function MonitorsPage() {
                   const d = certDays(m);
                   const note = kind === "down" || kind === "warn" ? m.message
                     : d != null && d < (m.config.warn_days ?? 14) ? `Certificat : ${d} j restants`
-                    : m.latency_ms != null ? fmtLatency(m.latency_ms) : m.message;
+                    : m.latency_ms != null && m.type !== "snmp" && m.type !== "meross" ? fmtLatency(m.latency_ms) : m.message;
                   return (
                     <li key={m.id} className={cn("relative grid gap-3 rounded-xl border border-line-subtle bg-box p-4 transition-colors hover:border-line-strong", !m.enabled && "opacity-60")}
                       style={kind === "down" ? { borderColor: `color-mix(in srgb, ${kindTone("down")} 40%, var(--mm-border))` } : undefined}>
@@ -122,6 +128,59 @@ export function MonitorsPage() {
         </div>
       )}
       {editing && <MonitorDialog monitor={editing === "new" ? undefined : editing} onClose={(changed) => { setEditing(undefined); if (changed) refresh(); }} />}
+    </>
+  );
+}
+
+type CfgSetter = <K extends keyof MonitorInput["config"]>(k: K, v: MonitorInput["config"][K]) => void;
+
+function SnmpFields({ m, cfg, editing }: { m: MonitorInput; cfg: CfgSetter; editing: boolean }) {
+  const c = m.config;
+  const row = "flex flex-wrap items-end gap-3 [&>.mm-field]:min-w-40 [&>.mm-field]:flex-1";
+  const secret = (k: "community" | "auth_pass" | "priv_pass", label: string) => (
+    <Field label={label} htmlFor={`m-${k}`}>
+      <input id={`m-${k}`} className={inputClass} type="password" autoComplete="new-password" placeholder={editing ? "Inchangé" : k === "community" ? "public" : ""}
+        value={c[k] ?? ""} onChange={(e) => cfg(k, e.target.value)} />
+    </Field>
+  );
+  return (
+    <>
+      <div className={row}>
+        <Field label="Version" htmlFor="m-snmpv">
+          <select id="m-snmpv" className={inputClass} value={c.snmp_version ?? "2c"} onChange={(e) => cfg("snmp_version", e.target.value as "2c")}>
+            <option value="1">v1</option><option value="2c">v2c</option><option value="3">v3 (recommandé)</option>
+          </select>
+        </Field>
+        <Field label="OID" htmlFor="m-oid" hint="Ex. 1.3.6.1.2.1.1.3.0 (uptime)"><input id="m-oid" className={`${inputClass} font-mono`} value={c.oid ?? ""} onChange={(e) => cfg("oid", e.target.value)} /></Field>
+        <Field label="Unité (facultatif)" htmlFor="m-unit"><input id="m-unit" className={inputClass} placeholder="°C, %, W…" value={c.unit ?? ""} onChange={(e) => cfg("unit", e.target.value)} /></Field>
+      </div>
+      {(c.snmp_version ?? "2c") !== "3" ? (
+        <div className={row}>
+          {secret("community", "Communauté")}
+          <Field label="Texte attendu (facultatif)" htmlFor="m-exp"><input id="m-exp" className={inputClass} value={c.expected ?? ""} onChange={(e) => cfg("expected", e.target.value)} /></Field>
+        </div>
+      ) : (
+        <>
+          <div className={row}>
+            <Field label="Utilisateur" htmlFor="m-user"><input id="m-user" className={inputClass} autoComplete="off" value={c.snmp_user ?? ""} onChange={(e) => cfg("snmp_user", e.target.value)} /></Field>
+            <Field label="Authentification" htmlFor="m-auth">
+              <select id="m-auth" className={inputClass} value={c.auth_proto ?? ""} onChange={(e) => cfg("auth_proto", e.target.value)}>
+                <option value="">Aucune</option>{["SHA", "SHA256", "SHA512", "MD5"].map((p) => <option key={p}>{p}</option>)}
+              </select>
+            </Field>
+            {secret("auth_pass", "Mot de passe d'authentification")}
+          </div>
+          <div className={row}>
+            <Field label="Chiffrement" htmlFor="m-priv">
+              <select id="m-priv" className={inputClass} value={c.priv_proto ?? ""} onChange={(e) => cfg("priv_proto", e.target.value)}>
+                <option value="">Aucun</option>{["AES", "AES256", "DES"].map((p) => <option key={p}>{p}</option>)}
+              </select>
+            </Field>
+            {secret("priv_pass", "Mot de passe de chiffrement")}
+          </div>
+        </>
+      )}
+      {(c.snmp_version ?? "2c") !== "3" && <p className="mm-help -mt-3">v1/v2c transmettent la communauté en clair : préfère SNMPv3 avec authentification et chiffrement.</p>}
     </>
   );
 }
@@ -202,12 +261,29 @@ function MonitorDialog({ monitor, onClose }: { monitor?: Monitor; onClose: (chan
             <Field label="Réponse attendue (facultatif)" htmlFor="m-exp"><input id="m-exp" className={`${inputClass} font-mono`} value={m.config.expected ?? ""} onChange={(e) => cfg("expected", e.target.value)} /></Field>
           </div>
         )}
+        {m.type === "snmp" && <SnmpFields m={m} cfg={cfg} editing={!!monitor} />}
+        {m.type === "meross" && (
+          <Field label="Canal (multiprise)" htmlFor="m-ch" hint="0 pour une prise simple">
+            <input id="m-ch" className={`${inputClass} tabular-nums`} type="number" min={0} max={8} placeholder="0" value={m.config.channel ?? ""} onChange={(e) => cfg("channel", num(e.target.value))} />
+          </Field>
+        )}
+        {(m.type === "snmp" || m.type === "meross") && (
+          <div className="flex flex-wrap items-end gap-3 [&>.mm-field]:min-w-40 [&>.mm-field]:flex-1">
+            <Field label={`Seuil haut${m.type === "meross" ? " (W)" : ""} (facultatif)`} htmlFor="m-max" hint={m.type === "meross" ? "Alerte si la consommation le dépasse" : "Alerte au-dessus"}>
+              <input id="m-max" className={`${inputClass} tabular-nums`} type="number" step="any" value={m.config.max_value ?? ""} onChange={(e) => cfg("max_value", num(e.target.value))} />
+            </Field>
+            <Field label={`Seuil bas${m.type === "meross" ? " (W)" : ""} (facultatif)`} htmlFor="m-min" hint={m.type === "meross" ? "Ex. appareil éteint par erreur" : "Alerte en dessous"}>
+              <input id="m-min" className={`${inputClass} tabular-nums`} type="number" step="any" value={m.config.min_value ?? ""} onChange={(e) => cfg("min_value", num(e.target.value))} />
+            </Field>
+          </div>
+        )}
+        {m.type === "meross" && <p className="mm-help -mt-3">Lecture directe sur le réseau local, sans passer par le cloud. Connecte d'abord le compte Meross dans Configuration.</p>}
         {(m.type === "ssl" || (m.type === "http" && m.config.check_ssl)) && (
           <Field label="Avertir par e-mail avant expiration (jours)" htmlFor="m-warn" hint="Un seul e-mail par certificat, par exemple 3 jours avant">
             <input id="m-warn" className={`${inputClass} tabular-nums`} type="number" min={1} max={365} placeholder="14" value={m.config.warn_days ?? ""} onChange={(e) => cfg("warn_days", num(e.target.value))} />
           </Field>
         )}
-        {m.type !== "ssl" && (
+        {m.type !== "ssl" && m.type !== "meross" && (
           <Field label="Seuil de lenteur en ms (facultatif)" htmlFor="m-slow" hint="Au-delà, la sonde passe en « performances dégradées »">
             <input id="m-slow" className={`${inputClass} tabular-nums`} type="number" min={0} value={m.config.degraded_ms ?? ""} onChange={(e) => cfg("degraded_ms", num(e.target.value))} />
           </Field>
@@ -231,6 +307,7 @@ export function MonitorDetailPage({ id }: { id: number }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const toast = useToast();
   const series = useMemo(() => [{ label: "Latence", values: res.data?.latency ?? [] }], [res.data]);
+  const valueSeries = useMemo(() => [{ label: "Valeur", values: res.data?.value ?? [] }], [res.data]);
   const m = mon.data;
   useTitle(m?.name ?? "Sondes");
 
@@ -269,6 +346,12 @@ export function MonitorDetailPage({ id }: { id: number }) {
           <SectionTitle id="lat-title" actions={<Segmented size="sm" label="Période" value={range} onChange={setRange} options={[["1h", "1 h"], ["24h", "24 h"], ["7d", "7 j"], ["30d", "30 j"], ["90d", "90 j"]]} />}>Latence</SectionTitle>
           <Card className="p-5"><Chart t={res.data?.t ?? []} series={series} format={fmtLatency} height={260} /></Card>
         </section>
+        {(m.type === "snmp" || m.type === "meross") && (
+          <section aria-labelledby="val-title">
+            <SectionTitle id="val-title">{m.type === "meross" ? "Consommation instantanée" : "Valeur relevée"}</SectionTitle>
+            <Card className="p-5"><Chart t={res.data?.t ?? []} series={valueSeries} format={fmtValue(unitOf(m))} height={260} /></Card>
+          </section>
+        )}
         <section aria-labelledby="up-title">
           <SectionTitle id="up-title" actions={<span className="font-mono text-sm font-semibold text-h1">{formatPct(uptime(m))}</span>}>Disponibilité sur 90 jours</SectionTitle>
           <Card className="p-5">

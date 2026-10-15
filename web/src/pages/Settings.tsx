@@ -181,11 +181,18 @@ export function SettingsPage({ version }: { version: string }) {
                 try { await api.post("/api/reports/monthly/send"); toast("Rapport du mois dernier envoyé"); } catch (e) { setError((e as Error).message); }
                 setBusy(undefined);
               }}>Envoyer le dernier</Button>
-              <Button loading={busy === "report"} onClick={() => save("report", ["report_monthly_enabled"])}>Enregistrer</Button>
+              <Button loading={busy === "report"} onClick={() => save("report", ["report_monthly_enabled", "report_energy"])}>Enregistrer</Button>
             </>}>
             <Switch label="Envoyer le rapport chaque mois" checked={bool("report_monthly_enabled")} onChange={(c) => setDraft({ ...draft, report_monthly_enabled: String(c) })} />
+            <Field label="Rapport de consommation électrique" htmlFor="s-energy" hint="Envoyé à 8 h : la veille, la semaine passée (le lundi) ou le mois passé (le 1er)">
+              <select id="s-energy" className={inputClass} value={v("report_energy")} onChange={set("report_energy")}>
+                <option value="off">Jamais</option><option value="daily">Chaque jour</option><option value="weekly">Chaque semaine</option><option value="monthly">Chaque mois</option>
+              </select>
+            </Field>
           </SettingsSection>
         </div>
+
+        <MerossSection connected={data.settings.meross_key_set === "true"} onChange={(set) => setData({ ...data, settings: { ...data.settings, meross_key_set: String(set) } })} />
 
         <ApiSection draft={draft} setDraft={setDraft} save={save} busy={busy} />
 
@@ -195,6 +202,66 @@ export function SettingsPage({ version }: { version: string }) {
         </div>
       </div>
     </>
+  );
+}
+
+interface MerossDevice { uuid: string; name: string; type: string; online: boolean }
+
+function MerossSection({ connected, onChange }: { connected: boolean; onChange: (connected: boolean) => void }) {
+  const [form, setForm] = useState({ email: "", password: "", mfa_code: "", region: "eu" });
+  const [devices, setDevices] = useState<MerossDevice[]>();
+  const [err, setErr] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
+  const login = async () => {
+    setBusy(true);
+    setErr(undefined);
+    try {
+      const r = await api.post<{ devices: MerossDevice[] }>("/api/meross/login", form);
+      setDevices(r.devices);
+      setForm({ ...form, password: "", mfa_code: "" });
+      onChange(true);
+      toast("Compte Meross connecté");
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <SettingsSection id="meross" title="Prises connectées Meross"
+      description="Le cloud Meross n'est contacté qu'ici, une seule fois, pour récupérer la clé de ton compte ; la session est fermée aussitôt et le mot de passe n'est jamais enregistré. Les relevés sont ensuite lus directement sur les prises, en réseau local : aucune donnée de consommation ne part vers le cloud."
+      actions={<>
+        {connected && <Button variant="danger-ghost" onClick={() => api.del("/api/meross").then(() => { setDevices(undefined); onChange(false); toast("Clé Meross supprimée"); })}>Oublier la clé</Button>}
+        <Button loading={busy} onClick={login}>{connected ? "Reconnecter" : "Connecter le compte"}</Button>
+      </>}>
+      {connected && <Alert kind="success" title="Clé du compte enregistrée">Ajoute chaque prise comme sonde « Prise Meross » avec son adresse IP locale (une IP fixe dans ton DHCP est conseillée).</Alert>}
+      {err && <Alert kind="error" title={err} />}
+      <div className={FIELD_ROW}>
+        <Field label="E-mail du compte Meross" htmlFor="mr-email"><input id="mr-email" className={inputClass} type="email" autoComplete="off" value={form.email} onChange={set("email")} /></Field>
+        <Field label="Mot de passe" htmlFor="mr-pass"><input id="mr-pass" className={inputClass} type="password" autoComplete="off" value={form.password} onChange={set("password")} /></Field>
+      </div>
+      <div className={FIELD_ROW}>
+        <Field label="Région du compte" htmlFor="mr-region">
+          <select id="mr-region" className={inputClass} value={form.region} onChange={set("region")}>
+            <option value="eu">Europe</option><option value="us">Amériques</option><option value="ap">Asie-Pacifique</option>
+          </select>
+        </Field>
+        <Field label="Code de double authentification" htmlFor="mr-mfa" hint="Seulement si elle est activée"><input id="mr-mfa" className={inputClass} inputMode="numeric" autoComplete="one-time-code" value={form.mfa_code} onChange={set("mfa_code")} /></Field>
+      </div>
+      {devices && (
+        <ul className="divide-y divide-line-subtle rounded-xl border border-line-subtle">
+          {devices.length === 0 && <li className="px-4 py-3 text-sm text-meta">Aucun appareil sur ce compte.</li>}
+          {devices.map((d) => (
+            <li key={d.uuid} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+              <span className="truncate text-h2">{d.name}</span>
+              <span className="shrink-0 font-mono text-xs text-meta">{d.type} · {d.online ? "en ligne" : "hors ligne"}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </SettingsSection>
   );
 }
 
@@ -216,7 +283,7 @@ function ImportExportSection() {
   };
   return (
     <SettingsSection id="data" title="Sauvegarde & restauration"
-      description="Exporte les réglages, les sondes et la liste des hôtes au format JSON. Les secrets (mot de passe SMTP, jetons d'agent) ne sont jamais exportés."
+      description="Exporte les réglages, les sondes et la liste des hôtes au format JSON. Les secrets (mot de passe SMTP, clé Meross, identifiants SNMP, jetons d'agent) ne sont jamais exportés : à ressaisir après import."
       actions={<>
         <Button variant="secondary" icon={<Upload size={16} />} onClick={() => file.current?.click()}>Importer un fichier</Button>
         <ButtonAnchor href={`/api/export${metrics ? "?metrics=1" : ""}`} download icon={<Download size={16} />}>Exporter</ButtonAnchor>

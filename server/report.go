@@ -331,6 +331,7 @@ func (s *Server) runReports(ctx context.Context) {
 				}
 			}
 		}
+		s.maybeSendEnergyReport()
 		select {
 		case <-ctx.Done():
 			return

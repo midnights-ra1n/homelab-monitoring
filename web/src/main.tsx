@@ -15,6 +15,7 @@ import { DisksPage } from "./pages/Disks";
 import { ContainersPage } from "./pages/Containers";
 import { ReportsPage } from "./pages/Reports";
 import { IncidentsPage } from "./pages/Incidents";
+import { EnergyPage } from "./pages/Energy";
 
 interface AuthState { setup_required: boolean; authenticated: boolean; username: string; version: string; dev_mode: boolean }
 
@@ -26,7 +27,7 @@ function App() {
   // Detail pages (/hosts/3, /monitors/7) set their own title from the item's name; the public page uses its own title.
   const PAGE_TITLES: Record<string, string> = {
     "": "Vue d'ensemble", hosts: "Hôtes", monitors: "Sondes", incidents: "Incidents", updates: "Mises à jour", disks: "Disques",
-    containers: "Conteneurs", reports: "Rapports", "status-page": "Page de statut", settings: "Paramètres",
+    containers: "Conteneurs", reports: "Rapports", energy: "Énergie", "status-page": "Page de statut", settings: "Paramètres",
   };
   useTitle(path === "/status" || seg[1] ? undefined : auth && !auth.authenticated ? (auth.setup_required ? "Premier démarrage" : "Connexion") : PAGE_TITLES[seg[0] ?? ""] ?? "");
 
@@ -55,6 +56,7 @@ function App() {
   else if (seg[0] === "disks") page = <DisksPage />;
   else if (seg[0] === "containers") page = <ContainersPage />;
   else if (seg[0] === "reports") page = <ReportsPage />;
+  else if (seg[0] === "energy") page = <EnergyPage />;
   else if (seg[0] === "status-page") page = <StatusEditorPage />;
   else if (seg[0] === "settings") page = <SettingsPage version={auth.version} />;
   else page = <OverviewPage />;

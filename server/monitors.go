@@ -58,6 +58,47 @@ type MonitorConfig struct {
 	Expected         string `json:"expected,omitempty"`        // dns: an answer must contain it
 	WarnDays         int    `json:"warn_days,omitempty"`       // ssl / check_ssl: e-mail this many days before expiry
 	FailureThreshold int    `json:"failure_threshold,omitempty"`
+
+	// snmp and meross probes read a numeric value; outside these bounds the probe is degraded.
+	MinValue    *float64 `json:"min_value,omitempty"`
+	MaxValue    *float64 `json:"max_value,omitempty"`
+	Unit        string   `json:"unit,omitempty"`         // snmp: shown after the value
+	OID         string   `json:"oid,omitempty"`          // snmp
+	SNMPVersion string   `json:"snmp_version,omitempty"` // snmp: 1, 2c or 3
+	Community   string   `json:"community,omitempty"`    // snmp v1/v2c, secret
+	SNMPUser    string   `json:"snmp_user,omitempty"`    // snmp v3
+	AuthProto   string   `json:"auth_proto,omitempty"`   // snmp v3: SHA, SHA256, SHA512, MD5
+	AuthPass    string   `json:"auth_pass,omitempty"`    // snmp v3, secret
+	PrivProto   string   `json:"priv_proto,omitempty"`   // snmp v3: AES, AES256, DES
+	PrivPass    string   `json:"priv_pass,omitempty"`    // snmp v3, secret
+	Channel     int      `json:"channel,omitempty"`      // meross: socket of a power strip
+}
+
+// MarshalJSON hides the secrets from every API response and export; stored() keeps them for the database.
+func (c MonitorConfig) MarshalJSON() ([]byte, error) {
+	type plain MonitorConfig
+	p := plain(c)
+	p.Community, p.AuthPass, p.PrivPass = "", "", ""
+	return json.Marshal(p)
+}
+
+func (c MonitorConfig) stored() string {
+	type plain MonitorConfig
+	b, _ := json.Marshal(plain(c))
+	return string(b)
+}
+
+// keepSecrets fills the secrets left empty in an edit form with the saved ones.
+func (c *MonitorConfig) keepSecrets(old MonitorConfig) {
+	if c.Community == "" {
+		c.Community = old.Community
+	}
+	if c.AuthPass == "" {
+		c.AuthPass = old.AuthPass
+	}
+	if c.PrivPass == "" {
+		c.PrivPass = old.PrivPass
+	}
 }
 
 type Monitor struct {
@@ -155,8 +196,26 @@ func (m *Monitor) validate() string {
 		if host == "" || strings.ContainsAny(host, " /") {
 			return "La cible doit être un nom de domaine, avec un port facultatif"
 		}
+	case "snmp":
+		if msg := validateSNMP(m); msg != "" {
+			return msg
+		}
+	case "meross":
+		host := m.Target
+		if h, _, err := net.SplitHostPort(m.Target); err == nil {
+			host = h
+		}
+		if host == "" || strings.ContainsAny(m.Target, " /@?#") {
+			return "La cible doit être l'adresse IP locale de la prise, avec un port facultatif"
+		}
+		if c.Channel < 0 || c.Channel > 8 {
+			return "Le canal doit être compris entre 0 et 8"
+		}
 	default:
-		return "Le type de sonde doit être http, tcp, dns ou ssl"
+		return "Le type de sonde doit être http, tcp, dns, ssl, snmp ou meross"
+	}
+	if c.MinValue != nil && c.MaxValue != nil && *c.MinValue > *c.MaxValue {
+		return "Le seuil bas doit être inférieur au seuil haut"
 	}
 	if m.Type == "ssl" || c.CheckSSL {
 		if c.WarnDays == 0 {
@@ -234,6 +293,7 @@ type checkResult struct {
 	latency    *float64
 	message    string
 	certExpiry *time.Time
+	value      *float64 // snmp reading, or watts for meross
 }
 
 func ms(d time.Duration) *float64 {
@@ -243,9 +303,9 @@ func ms(d time.Duration) *float64 {
 
 func slowOrOK(c *MonitorConfig, lat *float64, okMsg string) checkResult {
 	if c.DegradedMs > 0 && *lat > float64(c.DegradedMs) {
-		return checkResult{StatusDegraded, lat, fmt.Sprintf("Réponse lente : %.0f ms (seuil %d ms)", *lat, c.DegradedMs), nil}
+		return checkResult{StatusDegraded, lat, fmt.Sprintf("Réponse lente : %.0f ms (seuil %d ms)", *lat, c.DegradedMs), nil, nil}
 	}
-	return checkResult{StatusOperational, lat, okMsg, nil}
+	return checkResult{StatusOperational, lat, okMsg, nil, nil}
 }
 
 func runCheck(ctx context.Context, m *Monitor) checkResult {
@@ -258,7 +318,7 @@ func runCheck(ctx context.Context, m *Monitor) checkResult {
 		start := time.Now()
 		conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", m.Target)
 		if err != nil {
-			return checkResult{StatusMajor, nil, "Connexion impossible : " + err.Error(), nil}
+			return checkResult{StatusMajor, nil, "Connexion impossible : " + err.Error(), nil, nil}
 		}
 		conn.Close()
 		return slowOrOK(&m.Config, ms(time.Since(start)), "Port ouvert")
@@ -266,8 +326,10 @@ func runCheck(ctx context.Context, m *Monitor) checkResult {
 		return checkDNS(ctx, m)
 	case "ssl":
 		return checkSSL(ctx, m)
+	case "snmp":
+		return checkSNMP(ctx, m)
 	}
-	return checkResult{StatusUnknown, nil, "Type inconnu", nil}
+	return checkResult{StatusUnknown, nil, "Type inconnu", nil, nil}
 }
 
 func checkHTTP(ctx context.Context, m *Monitor) checkResult {
@@ -283,13 +345,13 @@ func checkHTTP(ctx context.Context, m *Monitor) checkResult {
 	}}
 	req, err := http.NewRequestWithContext(ctx, m.Config.Method, m.Target, nil)
 	if err != nil {
-		return checkResult{StatusMajor, nil, err.Error(), nil}
+		return checkResult{StatusMajor, nil, err.Error(), nil, nil}
 	}
 	req.Header.Set("User-Agent", "hlm-monitor/"+version)
 	start := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
-		return checkResult{StatusMajor, nil, "Requête échouée : " + err.Error(), nil}
+		return checkResult{StatusMajor, nil, "Requête échouée : " + err.Error(), nil, nil}
 	}
 	defer resp.Body.Close()
 	lat := ms(time.Since(start))
@@ -299,17 +361,17 @@ func checkHTTP(ctx context.Context, m *Monitor) checkResult {
 		cert = &na
 		// Reachable only with ignore_tls: an expired certificate is still an outage.
 		if time.Until(na) <= 0 {
-			return checkResult{StatusMajor, lat, "Certificat expiré le " + na.In(localTZ()).Format("02/01/2006"), cert}
+			return checkResult{StatusMajor, lat, "Certificat expiré le " + na.In(localTZ()).Format("02/01/2006"), cert, nil}
 		}
 	}
 	match, _ := statusMatcher(m.Config.ExpectedStatus)
 	if !match(resp.StatusCode) {
-		return checkResult{StatusMinor, lat, fmt.Sprintf("Code HTTP %d inattendu (attendu %s)", resp.StatusCode, m.Config.ExpectedStatus), cert}
+		return checkResult{StatusMinor, lat, fmt.Sprintf("Code HTTP %d inattendu (attendu %s)", resp.StatusCode, m.Config.ExpectedStatus), cert, nil}
 	}
 	if m.Config.Keyword != "" {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		if !strings.Contains(string(body), m.Config.Keyword) {
-			return checkResult{StatusMinor, lat, "Mot-clé absent de la réponse", cert}
+			return checkResult{StatusMinor, lat, "Mot-clé absent de la réponse", cert, nil}
 		}
 	}
 	res := slowOrOK(&m.Config, lat, fmt.Sprintf("HTTP %d", resp.StatusCode))
@@ -362,10 +424,10 @@ func checkDNS(ctx context.Context, m *Monitor) checkResult {
 	}
 	lat := ms(time.Since(start))
 	if err != nil {
-		return checkResult{StatusMajor, nil, "Résolution échouée : " + err.Error(), nil}
+		return checkResult{StatusMajor, nil, "Résolution échouée : " + err.Error(), nil, nil}
 	}
 	if len(answers) == 0 {
-		return checkResult{StatusMinor, lat, "Aucune réponse", nil}
+		return checkResult{StatusMinor, lat, "Aucune réponse", nil, nil}
 	}
 	if exp := m.Config.Expected; exp != "" {
 		found := false
@@ -375,7 +437,7 @@ func checkDNS(ctx context.Context, m *Monitor) checkResult {
 			}
 		}
 		if !found {
-			return checkResult{StatusMinor, lat, "Réponse inattendue : " + strings.Join(answers, ", "), nil}
+			return checkResult{StatusMinor, lat, "Réponse inattendue : " + strings.Join(answers, ", "), nil, nil}
 		}
 	}
 	return slowOrOK(&m.Config, lat, strings.Join(answers, ", "))
@@ -392,21 +454,21 @@ func checkSSL(ctx context.Context, m *Monitor) checkResult {
 	d := &tls.Dialer{Config: &tls.Config{ServerName: host}}
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return checkResult{StatusMajor, nil, "Certificat invalide ou injoignable : " + err.Error(), nil}
+		return checkResult{StatusMajor, nil, "Certificat invalide ou injoignable : " + err.Error(), nil, nil}
 	}
 	defer conn.Close()
 	lat := ms(time.Since(start))
 	certs := conn.(*tls.Conn).ConnectionState().PeerCertificates
 	if len(certs) == 0 {
-		return checkResult{StatusMajor, lat, "Aucun certificat présenté", nil}
+		return checkResult{StatusMajor, lat, "Aucun certificat présenté", nil, nil}
 	}
 	na := certs[0].NotAfter
 	expiry := na.In(localTZ()).Format("02/01/2006")
 	if time.Until(na) <= 0 {
-		return checkResult{StatusMajor, lat, "Certificat expiré le " + expiry, &na}
+		return checkResult{StatusMajor, lat, "Certificat expiré le " + expiry, &na, nil}
 	}
 	// Expiring soon is not an outage: it stays operational and triggers a one-off e-mail warning.
-	return checkResult{StatusOperational, lat, fmt.Sprintf("Valide jusqu'au %s (%d jours)", expiry, daysLeft(na)), &na}
+	return checkResult{StatusOperational, lat, fmt.Sprintf("Valide jusqu'au %s (%d jours)", expiry, daysLeft(na)), &na, nil}
 }
 
 func daysLeft(t time.Time) int { return int(time.Until(t).Hours() / 24) }
@@ -441,7 +503,12 @@ func (s *Server) runMonitors(ctx context.Context) {
 			go func(m Monitor) {
 				sem <- struct{}{}
 				defer func() { <-sem; mu.Lock(); delete(inflight, m.ID); mu.Unlock() }()
-				res := runCheck(ctx, &m)
+				var res checkResult
+				if m.Type == "meross" {
+					res = checkMeross(ctx, &m, s.getSetting("meross_key", ""))
+				} else {
+					res = runCheck(ctx, &m)
+				}
 				if ctx.Err() != nil {
 					return
 				}
@@ -449,7 +516,8 @@ func (s *Server) runMonitors(ctx context.Context) {
 				eff := res.status
 				if m.Maintenance {
 					eff = StatusMaintenance
-				} else if statusRank(res.status) >= statusRank(StatusMinor) {
+				} else if statusRank(res.status) >= statusRank(StatusMinor) || (res.value != nil && res.status == StatusDegraded) {
+					// A value over its threshold waits too, so a short power spike does not send an e-mail.
 					// Only flip to an outage after N consecutive failures, to avoid flapping alerts.
 					fails[m.ID]++
 					if fails[m.ID] < m.Config.threshold() {
@@ -482,18 +550,23 @@ func (s *Server) recordResult(m *Monitor, res checkResult, eff string) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`INSERT OR REPLACE INTO monitor_results(monitor_id,ts,status,latency_ms,message) VALUES(?,?,?,?,?)`,
-		m.ID, now.UnixMilli(), stored, res.latency, res.message); err != nil {
+	if _, err := tx.Exec(`INSERT OR REPLACE INTO monitor_results(monitor_id,ts,status,latency_ms,message,value) VALUES(?,?,?,?,?,?)`,
+		m.ID, now.UnixMilli(), stored, res.latency, res.message, res.value); err != nil {
 		return err
 	}
 	latSum, latN := 0.0, 0
 	if res.latency != nil {
 		latSum, latN = *res.latency, 1
 	}
-	if _, err := tx.Exec(`INSERT INTO monitor_daily(monitor_id,day,total,up,worst,latency_sum,latency_n) VALUES(?,?,1,?,?,?,?)
+	energy := 0.0
+	if m.Type == "meross" && res.value != nil {
+		// shortcut: assumes the power held for the whole interval; finer if the interval is short.
+		energy = *res.value * float64(m.IntervalS) / 3600
+	}
+	if _, err := tx.Exec(`INSERT INTO monitor_daily(monitor_id,day,total,up,worst,latency_sum,latency_n,energy_wh) VALUES(?,?,1,?,?,?,?,?)
 		ON CONFLICT(monitor_id,day) DO UPDATE SET total=total+1, up=up+excluded.up, worst=MAX(worst,excluded.worst),
-		latency_sum=latency_sum+excluded.latency_sum, latency_n=latency_n+excluded.latency_n`,
-		m.ID, now.Unix()/86400*86400, up, statusRank(stored), latSum, latN); err != nil {
+		latency_sum=latency_sum+excluded.latency_sum, latency_n=latency_n+excluded.latency_n, energy_wh=energy_wh+excluded.energy_wh`,
+		m.ID, now.Unix()/86400*86400, up, statusRank(stored), latSum, latN, energy); err != nil {
 		return err
 	}
 	var certUnix *int64
@@ -643,9 +716,8 @@ func (in monitorInput) toMonitor() (Monitor, string) {
 }
 
 func (s *Server) insertMonitor(m *Monitor) (int64, error) {
-	cfg, _ := json.Marshal(m.Config)
 	res, err := s.db.Exec(`INSERT INTO monitors(name,type,target,interval_s,timeout_s,config,enabled,maintenance,public,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-		m.Name, m.Type, m.Target, m.IntervalS, m.TimeoutS, string(cfg), m.Enabled, m.Maintenance, m.Public, time.Now().Unix())
+		m.Name, m.Type, m.Target, m.IntervalS, m.TimeoutS, m.Config.stored(), m.Enabled, m.Maintenance, m.Public, time.Now().Unix())
 	if err != nil {
 		return 0, err
 	}
@@ -680,15 +752,19 @@ func (s *Server) handleUpdateMonitor(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &in) {
 		return
 	}
+	old, ok := s.getMonitor(w, id)
+	if !ok {
+		return
+	}
+	in.Config.keepSecrets(old.Config)
 	m, msg := in.toMonitor()
 	if msg != "" {
 		writeErr(w, 400, msg)
 		return
 	}
-	cfg, _ := json.Marshal(m.Config)
 	// Reset last_check so the new settings are checked right away.
 	res, err := s.db.Exec(`UPDATE monitors SET name=?,type=?,target=?,interval_s=?,timeout_s=?,config=?,enabled=?,maintenance=?,public=?,last_check=0 WHERE id=?`,
-		m.Name, m.Type, m.Target, m.IntervalS, m.TimeoutS, string(cfg), m.Enabled, m.Maintenance, m.Public, id)
+		m.Name, m.Type, m.Target, m.IntervalS, m.TimeoutS, m.Config.stored(), m.Enabled, m.Maintenance, m.Public, id)
 	if err != nil {
 		serverErr(w, err)
 		return
@@ -751,22 +827,22 @@ func (s *Server) handleMonitorResults(w http.ResponseWriter, r *http.Request) {
 
 // latencySeries returns bucketed average latency (ms) with timestamps in seconds.
 func (s *Server) latencySeries(id int64, d time.Duration, bucketMs int64) (map[string]any, error) {
-	rows, err := s.db.Query(`SELECT (ts/?1)*?1 AS t, AVG(latency_ms), MAX(CASE status
+	rows, err := s.db.Query(`SELECT (ts/?1)*?1 AS t, AVG(latency_ms), AVG(value), MAX(CASE status
 			WHEN 'major_outage' THEN 4 WHEN 'minor_outage' THEN 3 WHEN 'degraded' THEN 2 WHEN 'maintenance' THEN 1 ELSE 0 END)
 		FROM monitor_results WHERE monitor_id=?2 AND ts>=?3 GROUP BY t ORDER BY t`, bucketMs, id, time.Now().Add(-d).UnixMilli())
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	ts, lat, worst := []int64{}, []*float64{}, []string{}
+	ts, lat, val, worst := []int64{}, []*float64{}, []*float64{}, []string{}
 	for rows.Next() {
 		var t int64
-		var l *float64
+		var l, v *float64
 		var wr int
-		if err := rows.Scan(&t, &l, &wr); err != nil {
+		if err := rows.Scan(&t, &l, &v, &wr); err != nil {
 			return nil, err
 		}
-		ts, lat, worst = append(ts, t/1000), append(lat, l), append(worst, rankStatus[wr])
+		ts, lat, val, worst = append(ts, t/1000), append(lat, l), append(val, v), append(worst, rankStatus[wr])
 	}
-	return map[string]any{"t": ts, "latency": lat, "worst": worst}, rows.Err()
+	return map[string]any{"t": ts, "latency": lat, "value": val, "worst": worst}, rows.Err()
 }

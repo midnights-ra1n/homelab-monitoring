@@ -106,6 +106,8 @@ var migrations = []string{
 	`ALTER TABLE hosts ADD COLUMN action TEXT NOT NULL DEFAULT '{}';`,
 	`ALTER TABLE host_metrics ADD COLUMN cpu_temp REAL;
 	ALTER TABLE hosts ADD COLUMN docker TEXT NOT NULL DEFAULT '{}';`,
+	`ALTER TABLE monitor_results ADD COLUMN value REAL;
+	ALTER TABLE monitor_daily ADD COLUMN energy_wh REAL NOT NULL DEFAULT 0;`,
 }
 
 func openDB(dir string) (*sql.DB, error) {

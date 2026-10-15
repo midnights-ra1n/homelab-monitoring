@@ -56,6 +56,17 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/containers", auth(s.handleContainers))
 	mux.HandleFunc("GET /api/reports/monthly", auth(s.handleMonthlyReport))
 	mux.HandleFunc("POST /api/reports/monthly/send", auth(s.handleSendMonthlyReport))
+	mux.HandleFunc("GET /api/reports/energy", auth(s.handleEnergyReport))
+	mux.HandleFunc("GET /api/reports/energy.csv", auth(s.handleEnergyCSV))
+	mux.HandleFunc("POST /api/reports/energy/send", auth(s.handleSendEnergyReport))
+	mux.HandleFunc("POST /api/meross/login", auth(s.handleMerossLogin))
+	mux.HandleFunc("DELETE /api/meross", auth(func(w http.ResponseWriter, r *http.Request) {
+		if err := s.setSetting("meross_key", ""); err != nil {
+			serverErr(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
 	mux.HandleFunc("GET /api/status/layout", auth(s.handleGetStatusLayout))
 	mux.HandleFunc("PUT /api/status/layout", auth(s.handlePutStatusLayout))
 	mux.HandleFunc("POST /api/status/preview", auth(s.handlePreviewStatus))

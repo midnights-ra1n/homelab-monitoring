@@ -65,6 +65,7 @@ func (s *Server) apiRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/disks", t("smart:read", s.handleDisks))
 	mux.HandleFunc("GET /api/v1/containers", t("docker:read", s.handleContainers))
 	mux.HandleFunc("GET /api/v1/reports/monthly", t("reports:read", s.handleMonthlyReport))
+	mux.HandleFunc("GET /api/v1/reports/energy", t("reports:read", s.handleEnergyReport))
 	mux.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) { writeErr(w, 404, "Route inconnue") })
 
 	auth := s.requireAuth

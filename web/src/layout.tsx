@@ -2,7 +2,7 @@
    .mm-app [sidebar | content], bottom bar under 640 px, ⌘K search and the alert strip. */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  AlertTriangle, ArrowUpRight, ChevronsUpDown, Container, CornerDownLeft, Ellipsis, FileBarChart, Globe, HardDrive, LayoutDashboard,
+  AlertTriangle, ArrowUpRight, ChevronsUpDown, Container, Plug, CornerDownLeft, Ellipsis, FileBarChart, Globe, HardDrive, LayoutDashboard,
   PackageCheck, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, Radar, Search, Server, Settings, Siren, X, type LucideIcon,
 } from "lucide-react";
 import { api, type Overview } from "./api";
@@ -20,6 +20,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/monitors", label: "Sondes", short: "Sondes", icon: Radar },
   { href: "/updates", label: "Mises à jour", short: "MàJ", icon: PackageCheck },
   { href: "/reports", label: "Rapports", short: "Rapports", icon: FileBarChart },
+  { href: "/energy", label: "Énergie", short: "Énergie", icon: Plug },
   { href: "/status-page", label: "Page de statut", short: "Statut", icon: PanelsTopLeft },
 ];
 const byHref = (href: string) => NAV_ITEMS.find((i) => i.href === href)!;
@@ -27,7 +28,7 @@ const byHref = (href: string) => NAV_ITEMS.find((i) => i.href === href)!;
 const NAV_SECTIONS: { label?: string; items: NavItem[] }[] = [
   { items: ["/", "/incidents"].map(byHref) },
   { label: "Infrastructure", items: ["/hosts", "/containers", "/disks"].map(byHref) },
-  { label: "Surveillance", items: ["/monitors", "/updates", "/reports"].map(byHref) },
+  { label: "Surveillance", items: ["/monitors", "/updates", "/reports", "/energy"].map(byHref) },
   { label: "Public", items: ["/status-page"].map(byHref) },
 ];
 /** Main tabs of the mobile bar (the rest is under "Plus"). */

@@ -8,13 +8,14 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 )
 
 // settingDefs lists every user-editable setting with its default value.
-// smtp_pass is write-only: it is never sent back to the browser or exported.
+// Secrets (smtp_pass, meross_key) are write-only: never sent back to the browser or exported.
 var settingDefs = map[string]string{
 	"agent_interval_s":        "30",
 	"retention_metrics_days":  "30",
@@ -47,6 +48,16 @@ var settingDefs = map[string]string{
 	"notify_smart_level":      DiskReplace,
 	"notify_docker_updates":   "false",
 	"report_monthly_enabled":  "false",
+	"report_energy":           "off",
+	"meross_key":              "",
+}
+
+var secretSettings = []string{"smtp_pass", "meross_key"}
+
+func dropSecrets(m map[string]string) {
+	for _, k := range secretSettings {
+		delete(m, k)
+	}
 }
 
 var intSettings = map[string][2]int{
@@ -68,8 +79,10 @@ func (s *Server) allSettings() map[string]string {
 
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	out := s.allSettings()
-	out["smtp_pass_set"] = strconv.FormatBool(out["smtp_pass"] != "")
-	delete(out, "smtp_pass")
+	for _, k := range secretSettings {
+		out[k+"_set"] = strconv.FormatBool(out[k] != "")
+	}
+	dropSecrets(out)
 	var size int64
 	if fi, err := os.Stat(filepath.Join(s.cfg.DataDir, "hlm.db")); err == nil {
 		size = fi.Size()
@@ -136,6 +149,9 @@ func validateSettings(in map[string]string) string {
 			return "Chaque origine CORS doit ressembler à https://gestion.example.fr"
 		}
 	}
+	if v, ok := in["report_energy"]; ok && v != "off" && v != "daily" && v != "weekly" && v != "monthly" {
+		return "La fréquence du rapport de consommation doit être off, daily, weekly ou monthly"
+	}
 	if v, ok := in["notify_smart_level"]; ok && v != DiskWatch && v != DiskReplace && v != DiskFailing && v != "off" {
 		return "Le seuil d'alerte SMART doit être watch, replace, failing ou off"
 	}
@@ -175,8 +191,8 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	for k, v := range in {
-		if k == "smtp_pass" && v == "" {
-			continue // empty means "keep the current password"
+		if v == "" && slices.Contains(secretSettings, k) {
+			continue // empty means "keep the current secret"; disconnecting goes through its own route
 		}
 		if v == "" { // empty restores the default value
 			if _, err := tx.Exec(`DELETE FROM settings WHERE key=?`, k); err != nil {

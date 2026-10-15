@@ -58,7 +58,7 @@ En HTTP (sans reverse proxy HTTPS), le jeton circule en clair : réservez cet us
 | `updates:read` | `GET /api/v1/updates` |
 | `smart:read` | `GET /api/v1/disks` |
 | `docker:read` | `GET /api/v1/containers` |
-| `reports:read` | `GET /api/v1/reports/monthly` |
+| `reports:read` | `GET /api/v1/reports/monthly`, `GET /api/v1/reports/energy` |
 | `maintenance:write` | `PUT /api/v1/hosts/{id}/maintenance`, `PUT /api/v1/monitors/{id}/maintenance` |
 
 Donnez à chaque jeton le minimum nécessaire. Un tableau de bord qui n'affiche que l'état global n'a besoin que de `status:read`.
@@ -283,8 +283,9 @@ Scope `monitors:read`. Toutes les sondes, avec la disponibilité des 90 derniers
 
 | Champ | Remarque |
 |---|---|
-| `type` | `http`, `tcp`, `dns` ou `ssl` |
-| `config` | dépend du type : `method`, `expected_status`, `keyword`, `ignore_tls`, `check_ssl`, `degraded_ms`, `dns_server`, `record_type`, `expected`, `warn_days`, `failure_threshold` |
+| `type` | `http`, `tcp`, `dns`, `ssl`, `snmp` ou `meross` (prise connectée) |
+| `config` | dépend du type : `method`, `expected_status`, `keyword`, `ignore_tls`, `check_ssl`, `degraded_ms`, `dns_server`, `record_type`, `expected`, `warn_days`, `failure_threshold` ; `snmp` : `oid`, `snmp_version`, `snmp_user`, `auth_proto`, `priv_proto`, `unit` ; `meross` : `channel` ; `snmp` et `meross` : `min_value`, `max_value` (seuils, au-delà l'état passe à `degraded`). Les secrets SNMP (`community`, `auth_pass`, `priv_pass`) ne sont jamais renvoyés |
+| `message` | pour `meross`, la mesure lisible (`120,5 W · 230,1 V · 0,54 A`) ; pour `snmp`, la valeur lue |
 | `last_check` | **millisecondes** Unix |
 | `latency_ms` | dernière latence, `null` en cas d'échec |
 | `cert_expires_at` | expiration du certificat suivi (sondes `ssl` ou `http` avec `check_ssl`), sinon `null` |
@@ -296,12 +297,13 @@ Scope `monitors:read`. Une sonde, même format. `404` si inconnue.
 
 ### `GET /api/v1/monitors/{id}/results?range=24h`
 
-Scope `monitors:read`. Latence moyenne par tranche (environ 300 points) et les 50 dernières vérifications. `range` : `1h`, `6h`, `24h`, `7d`, `30d`, `90d`.
+Scope `monitors:read`. Latence et valeur moyennes par tranche (environ 300 points) et les 50 dernières vérifications. `value` est la valeur lue par les sondes `snmp`, ou la puissance en **watts** des sondes `meross` ; `null` pour les autres types. `range` : `1h`, `6h`, `24h`, `7d`, `30d`, `90d`.
 
 ```json
 {
   "t":       [1791960000, 1791960288],
   "latency": [140.2, null],
+  "value":   [null, null],
   "worst":   ["operational", "major_outage"],
   "recent":  [
     { "ts": 1792046250123, "status": "operational", "latency_ms": 142.3, "message": "HTTP 200" }
@@ -446,6 +448,29 @@ Scope `reports:read`. Rapport d'un mois (`AAAA-MM`, mois précédent par défaut
 - `host_availability` est la part des relevés d'agent reçus par rapport à ceux attendus (avec l'intervalle d'agent actuel).
 - `certificates_expiring`, `pending_updates`, `security_updates` et `disks_attention` décrivent la situation **au moment de la génération**, pas l'historique. `certificates_expiring` contient des sondes au format de `/monitors`, et `disks_attention` des disques au format de `/disks`, avec l'hôte dans `name`.
 - Les données s'appuient sur les relevés journaliers, conservés 365 jours par défaut (*Réglages → Collecte et rétention*).
+
+### `GET /api/v1/reports/energy?days=30`
+
+Scope `reports:read`. Consommation des prises Meross sur les `days` derniers jours, aujourd'hui inclus (1 à 3650, 30 par défaut). Valeurs en **Wh**.
+
+```json
+{
+  "from": 1789776000,
+  "to": 1792368000,
+  "days": [1789776000, 1789862400],
+  "total_wh": 41250.4,
+  "avg_day_wh": 1375.0,
+  "avg_week_wh": 9625.1,
+  "avg_month_wh": 41855.3,
+  "plugs": [
+    { "id": 9, "name": "Baie réseau", "total_wh": 41250.4, "avg_day_wh": 1375.0, "avg_week_wh": 9625.1, "avg_month_wh": 41855.3, "daily": [1360.2, null] }
+  ]
+}
+```
+
+- `days[]` : minuit UTC de chaque jour ; `plugs[].daily[]` est aligné dessus, `null` les jours sans relevé.
+- Les moyennes ne comptent que les jours mesurés ; semaine = moyenne journalière × 7, mois = × 30,44.
+- L'énergie est estimée à partir de la puissance relevée à chaque vérification (puissance × intervalle) : un intervalle court donne une estimation plus fine.
 
 ## Exemples d'intégration
 
